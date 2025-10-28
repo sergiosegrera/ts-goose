@@ -54,7 +54,7 @@ const runMigration = async (tx: TransactionSQL, statement: string) => {
   await tx.unsafe(statement);
 };
 
-export const postgres_store: Store = {
+export const PostgresStore: Store = {
   checkTableExists,
   createTable,
   getVersions,

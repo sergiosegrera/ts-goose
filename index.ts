@@ -13,4 +13,5 @@ export {
   getMigrationVersions,
 } from "./create";
 export { APP_NAME, initializeDatabase } from "./init";
-export { postgres_store } from "./store-postgres";
+export type { Store } from "./store";
+export { PostgresStore } from "./store-postgres";
