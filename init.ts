@@ -5,17 +5,17 @@ import { postgres_store } from "./store-postgres";
 export const APP_NAME = "@ssegrera/ts-goose";
 
 export function initializeDatabase() {
-	const config = DEFAULT_CONFIG;
+  const config = DEFAULT_CONFIG;
 
-	let db: SQL;
+  let db: SQL;
 
-	if (config.driver === "postgres") {
-		db = new SQL(config.db_url, { adapter: "postgres" });
-	} else {
-		throw new Error(`Unsupported driver: ${config.driver}`);
-	}
+  if (config.driver === "postgres") {
+    db = new SQL(config.db_url, { adapter: "postgres" });
+  } else {
+    throw new Error(`Unsupported driver: ${config.driver}`);
+  }
 
-	const store = postgres_store;
+  const store = postgres_store;
 
-	return { db, store, config };
+  return { db, store, config };
 }

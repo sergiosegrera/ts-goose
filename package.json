@@ -26,6 +26,7 @@
     "cli"
   ],
   "devDependencies": {
+    "@biomejs/biome": "2.3.1",
     "@types/bun": "latest"
   },
   "peerDependencies": {
@@ -35,6 +36,8 @@
     "ts-goose": "bun run index.ts",
     "psql": "psql -h localhost -p 5432 -U postgres -d postgres",
     "build": "bun build cli.ts --target bun --outdir dist",
+    "lint": "biome check .",
+    "lint:fix": "biome check . --write",
     "prepublishOnly": "bun run build",
     "test": "bun test"
   }
