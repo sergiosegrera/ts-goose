@@ -1,6 +1,6 @@
 {
   "name": "@ssegrera/ts-goose",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A lightweight database migration tool for TypeScript and Bun",
   "author": "Sergio Segrera",
   "license": "MIT",
