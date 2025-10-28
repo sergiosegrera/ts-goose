@@ -62,7 +62,12 @@ bunx @ssegrera/ts-goose down
 
 ## Configuration
 
-Configure your database connection and migration directory in `ts-goose.yaml` or through the config file.
+The following environment variables can be used to configure the tool:
+- `TSGOOSE_DRIVER` - The database driver to use (currently only `postgres` is supported)
+- `TSGOOSE_DBSTRING` - The database connection string to use (defaults to `postgresql://postgres:postgres@localhost:5432/postgres`)
+- `TSGOOSE_MIGRATION_DIR` - The directory containing the migration files (defaults to `migrations`)
+- `TSGOOSE_TABLE_NAME` - The name of the table to use for storing the migration history (defaults to `tsgoose.migration`)
+
 
 ## Development
 
@@ -76,6 +81,12 @@ To run locally:
 
 ```bash
 bun run index.ts [command]
+```
+
+To run tests:
+
+```bash
+bun test
 ```
 
 To build:
