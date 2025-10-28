@@ -1,0 +1,22 @@
+# Source files (only ship dist)
+*.ts
+!*.d.ts
+tsconfig.json
+
+# Development files
+node_modules/
+.DS_Store
+*.log
+
+# Test and config files
+docker-compose.yaml
+ts-goose.yaml
+CLAUDE.md
+
+# Migration examples
+migrations/
+
+# Keep these
+!README.md
+!dist/
+

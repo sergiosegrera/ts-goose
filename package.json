@@ -1,0 +1,41 @@
+{
+  "name": "@ssegrera/ts-goose",
+  "version": "1.0.1",
+  "description": "A lightweight database migration tool for TypeScript and Bun",
+  "author": "Sergio Segrera",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sergio-segrera/ts-goose"
+  },
+  "module": "index.ts",
+  "type": "module",
+  "bin": {
+    "ts-goose": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "migration",
+    "database",
+    "postgres",
+    "bun",
+    "typescript",
+    "cli"
+  ],
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "scripts": {
+    "ts-goose": "bun run index.ts",
+    "psql": "psql -h localhost -p 5432 -U postgres -d postgres",
+    "build": "bun build cli.ts --target bun --outdir dist",
+    "prepublishOnly": "bun run build",
+    "test": "bun test"
+  }
+}

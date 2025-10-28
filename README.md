@@ -1,0 +1,87 @@
+# ts-goose
+
+A lightweight database migration tool for TypeScript and Bun, inspired by goose.
+
+## Installation
+
+### Using bunx (recommended)
+
+```bash
+bunx @ssegrera/ts-goose [command]
+```
+
+### Using pnpmx/npx
+
+```bash
+pnpx @ssegrera/ts-goose [command]
+# or
+npx @ssegrera/ts-goose [command]
+```
+
+### Global installation
+
+```bash
+# Using bun
+bun add -g @ssegrera/ts-goose
+
+# Using pnpm
+pnpm add -g @ssegrera/ts-goose
+
+# Using npm
+npm install -g @ssegrera/ts-goose
+```
+
+## Usage
+
+### Commands
+
+- `ts-goose create <name> [sql|ts]` - Create a new migration file
+- `ts-goose up` - Apply all pending migrations
+- `ts-goose up-by-one` - Apply the next pending migration
+- `ts-goose down` - Rollback the last applied migration
+- `ts-goose status` - Show migration status
+
+### Examples
+
+```bash
+# Create a new SQL migration
+bunx @ssegrera/ts-goose create add_users_table sql
+
+# Create a new TypeScript migration
+bunx @ssegrera/ts-goose create add_products_table ts
+
+# Apply the next migration
+bunx @ssegrera/ts-goose up
+
+# Check migration status
+bunx @ssegrera/ts-goose status
+
+# Rollback the last migration
+bunx @ssegrera/ts-goose down
+```
+
+## Configuration
+
+Configure your database connection and migration directory in `ts-goose.yaml` or through the config file.
+
+## Development
+
+To install dependencies:
+
+```bash
+bun install
+```
+
+To run locally:
+
+```bash
+bun run index.ts [command]
+```
+
+To build:
+
+```bash
+bun run build
+```
+
+This project was created using `bun init` in bun v1.3.0. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
