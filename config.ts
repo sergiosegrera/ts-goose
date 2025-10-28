@@ -4,7 +4,7 @@ export const DEFAULT_DRIVER = "postgres";
 export const DEFAULT_DB_URL =
   "postgresql://postgres:postgres@localhost:5432/postgres";
 
-interface Config {
+export interface Config {
   migration_dir: string;
   table_name: string;
   driver: string;

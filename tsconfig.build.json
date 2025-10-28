@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist",
+    "noEmit": false,
+    "moduleResolution": "node",
+    "resolveJsonModule": true
+  },
+  "include": ["index.ts", "cli.ts", "commands/**/*.ts", "*.ts"],
+  "exclude": ["node_modules", "dist", "tests"]
+}

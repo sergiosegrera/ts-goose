@@ -10,6 +10,7 @@
   },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "type": "module",
   "bin": {
     "ts-goose": "./dist/cli.js"
@@ -17,7 +18,8 @@
   "exports": {
     ".": {
       "import": "./dist/index.js",
-      "require": "./dist/index.js"
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     }
   },
   "files": [
@@ -42,7 +44,7 @@
   "scripts": {
     "ts-goose": "bun run index.ts",
     "psql": "psql -h localhost -p 5432 -U postgres -d postgres",
-    "build": "bun build cli.ts index.ts --target bun --outdir dist",
+    "build": "bun build cli.ts index.ts --target bun --outdir dist && tsc -p tsconfig.build.json",
     "lint": "biome check .",
     "lint:fix": "biome check . --write",
     "prepublishOnly": "bun run build",

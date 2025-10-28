@@ -5,6 +5,7 @@ export { createCommand } from "./commands/create";
 export { downCommand } from "./commands/down";
 export { statusCommand } from "./commands/status";
 export { upCommand } from "./commands/up";
+export type { Config } from "./config";
 export { DEFAULT_CONFIG } from "./config";
 export {
   createMigration,
