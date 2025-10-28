@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sergio-segrera/ts-goose"
+    "url": "https://github.com/sergiosegrera/ts-goose"
   },
   "module": "index.ts",
   "type": "module",
