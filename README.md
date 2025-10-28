@@ -79,7 +79,7 @@ import { SQL } from "bun";
 import { upCommand, PostgresStore, DEFAULT_CONFIG } from "@ssegrera/ts-goose";
 
 // Connect to postgres database
-const db = new SQL(DEFAULT_CONFIG.db_url);
+const db = new SQL(DEFAULT_CONFIG.db_url, { adapter: "postgres" });
 
 // Run migrations
 await upCommand(db, PostgresStore, {
