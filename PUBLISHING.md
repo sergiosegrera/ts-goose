@@ -4,20 +4,6 @@
 
 The repository includes a GitHub Action that automatically publishes to npm when you push a version tag.
 
-### Setup (One-time)
-
-1. Create an npm access token:
-   - Go to https://www.npmjs.com/settings/[your-username]/tokens
-   - Click "Generate New Token" → "Automation"
-   - Copy the token
-
-2. Add the token to GitHub:
-   - Go to your GitHub repository → Settings → Secrets and variables → Actions
-   - Click "New repository secret"
-   - Name: `NPM_TOKEN`
-   - Value: paste your npm token
-   - Click "Add secret"
-
 ### Publishing a New Version
 
 1. Update the version and create a git tag:
