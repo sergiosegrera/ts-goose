@@ -3,8 +3,11 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { SQL, TransactionSQL } from "bun";
 import { downCommand } from "../commands/down";
+import { downToCommand } from "../commands/down-to";
+import { resetCommand } from "../commands/reset";
 import { upCommand } from "../commands/up";
 import { upByOneCommand } from "../commands/up-by-one";
+import { upToCommand } from "../commands/up-to";
 import type { Store } from "../store";
 
 // Test migration directory
@@ -1199,5 +1202,835 @@ export const down = async (tx: TransactionSQL) => {};`;
     expect(mockCalls.insertVersion).toBe(1);
     expect(appliedVersions).toEqual([1000000000001n]);
     expect(appliedVersions).not.toContain(1000000000002n);
+  });
+});
+
+describe("Commands - resetCommand", () => {
+  test("should exit if table doesn't exist", async () => {
+    const { store, setTableExists } = createMockStore();
+    const db = createMockDB();
+    setTableExists(false);
+
+    const originalExit = process.exit;
+    const originalError = console.error;
+    let exitCode: number | undefined;
+
+    process.exit = mock((code?: number) => {
+      exitCode = code;
+      throw new Error("EXIT");
+    }) as never;
+    console.error = mock(() => {});
+
+    try {
+      await resetCommand(db, store, {
+        migration_dir: TEST_MIGRATION_DIR,
+        table_name: TEST_TABLE_NAME,
+      });
+    } catch {
+      // Expected exit
+    }
+
+    process.exit = originalExit;
+    console.error = originalError;
+
+    expect(exitCode).toBe(1);
+  });
+
+  test("should exit if no migrations to rollback", async () => {
+    const { store, setTableExists } = createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    const originalExit = process.exit;
+    const originalLog = console.log;
+    let exitCode: number | undefined;
+
+    process.exit = mock((code?: number) => {
+      exitCode = code;
+      throw new Error("EXIT");
+    }) as never;
+    console.log = mock(() => {});
+
+    try {
+      await resetCommand(db, store, {
+        migration_dir: TEST_MIGRATION_DIR,
+        table_name: TEST_TABLE_NAME,
+      });
+    } catch {
+      // Expected exit
+    }
+
+    process.exit = originalExit;
+    console.log = originalLog;
+
+    expect(exitCode).toBe(0);
+  });
+
+  test("should rollback all migrations in reverse order", async () => {
+    const { store, appliedVersions, mockCalls, setTableExists } =
+      createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    // Create multiple migrations and mark as applied
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.sql"),
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000002_second.sql"),
+      "-- +goose Up\nCREATE TABLE posts (id INT);\n\n-- +goose Down\nDROP TABLE posts;",
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000003_third.sql"),
+      "-- +goose Up\nCREATE TABLE comments (id INT);\n\n-- +goose Down\nDROP TABLE comments;",
+    );
+    appliedVersions.push(1000000000001n, 1000000000002n, 1000000000003n);
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    await resetCommand(db, store, {
+      migration_dir: TEST_MIGRATION_DIR,
+      table_name: TEST_TABLE_NAME,
+    });
+
+    console.log = originalLog;
+
+    expect(mockCalls.deleteVersion).toBe(3);
+    expect(appliedVersions.length).toBe(0);
+  });
+
+  test("should handle missing local migration file gracefully", async () => {
+    const { store, appliedVersions, mockCalls, setTableExists } =
+      createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    // Create one migration and mark two as applied (one missing)
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.sql"),
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+    appliedVersions.push(1000000000001n, 1000000000002n);
+
+    const originalLog = console.log;
+    const originalError = console.error;
+    console.log = mock(() => {});
+    console.error = mock(() => {});
+
+    await resetCommand(db, store, {
+      migration_dir: TEST_MIGRATION_DIR,
+      table_name: TEST_TABLE_NAME,
+    });
+
+    console.log = originalLog;
+    console.error = originalError;
+
+    // Should still attempt to delete versions
+    expect(mockCalls.deleteVersion).toBe(1);
+    expect(appliedVersions.length).toBe(1);
+  });
+
+  test("should rollback TypeScript migrations", async () => {
+    const { store, appliedVersions, mockCalls, setTableExists } =
+      createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    // Create TypeScript migrations
+    const tsMigrationCode = `import type { TransactionSQL } from "bun";
+export const up = async (tx: TransactionSQL) => {};
+export const down = async (tx: TransactionSQL) => {};`;
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.ts"),
+      tsMigrationCode,
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000002_second.ts"),
+      tsMigrationCode,
+    );
+
+    appliedVersions.push(1000000000001n, 1000000000002n);
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    await resetCommand(db, store, {
+      migration_dir: TEST_MIGRATION_DIR,
+      table_name: TEST_TABLE_NAME,
+    });
+
+    console.log = originalLog;
+
+    expect(mockCalls.deleteVersion).toBe(2);
+    expect(appliedVersions.length).toBe(0);
+  });
+});
+
+describe("Commands - upToCommand", () => {
+  test("should exit if target version not found", async () => {
+    const { store, setTableExists } = createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.sql"),
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+
+    const originalExit = process.exit;
+    const originalError = console.error;
+    let exitCode: number | undefined;
+
+    process.exit = mock((code?: number) => {
+      exitCode = code;
+      throw new Error("EXIT");
+    }) as never;
+    console.error = mock(() => {});
+
+    try {
+      await upToCommand(
+        db,
+        store,
+        {
+          migration_dir: TEST_MIGRATION_DIR,
+          table_name: TEST_TABLE_NAME,
+        },
+        9999999999999n,
+      );
+    } catch {
+      // Expected exit
+    }
+
+    process.exit = originalExit;
+    console.error = originalError;
+
+    expect(exitCode).toBe(1);
+  });
+
+  test("should exit if already at target version", async () => {
+    const { store, appliedVersions, setTableExists } = createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.sql"),
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+    appliedVersions.push(1000000000001n);
+
+    const originalExit = process.exit;
+    const originalLog = console.log;
+    let exitCode: number | undefined;
+
+    process.exit = mock((code?: number) => {
+      exitCode = code;
+      throw new Error("EXIT");
+    }) as never;
+    console.log = mock(() => {});
+
+    try {
+      await upToCommand(
+        db,
+        store,
+        {
+          migration_dir: TEST_MIGRATION_DIR,
+          table_name: TEST_TABLE_NAME,
+        },
+        1000000000001n,
+      );
+    } catch {
+      // Expected exit
+    }
+
+    process.exit = originalExit;
+    console.log = originalLog;
+
+    expect(exitCode).toBe(0);
+  });
+
+  test("should exit if current version is higher than target", async () => {
+    const { store, appliedVersions, setTableExists } = createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.sql"),
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000002_second.sql"),
+      "-- +goose Up\nCREATE TABLE posts (id INT);\n\n-- +goose Down\nDROP TABLE posts;",
+    );
+    appliedVersions.push(1000000000001n, 1000000000002n);
+
+    const originalExit = process.exit;
+    const originalError = console.error;
+    let exitCode: number | undefined;
+
+    process.exit = mock((code?: number) => {
+      exitCode = code;
+      throw new Error("EXIT");
+    }) as never;
+    console.error = mock(() => {});
+
+    try {
+      await upToCommand(
+        db,
+        store,
+        {
+          migration_dir: TEST_MIGRATION_DIR,
+          table_name: TEST_TABLE_NAME,
+        },
+        1000000000001n,
+      );
+    } catch {
+      // Expected exit
+    }
+
+    process.exit = originalExit;
+    console.error = originalError;
+
+    expect(exitCode).toBe(1);
+  });
+
+  test("should migrate to specific version", async () => {
+    const { store, appliedVersions, mockCalls } = createMockStore();
+    const db = createMockDB();
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.sql"),
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000002_second.sql"),
+      "-- +goose Up\nCREATE TABLE posts (id INT);\n\n-- +goose Down\nDROP TABLE posts;",
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000003_third.sql"),
+      "-- +goose Up\nCREATE TABLE comments (id INT);\n\n-- +goose Down\nDROP TABLE comments;",
+    );
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    await upToCommand(
+      db,
+      store,
+      {
+        migration_dir: TEST_MIGRATION_DIR,
+        table_name: TEST_TABLE_NAME,
+      },
+      1000000000002n,
+    );
+
+    console.log = originalLog;
+
+    expect(mockCalls.insertVersion).toBe(2);
+    expect(appliedVersions).toEqual([1000000000001n, 1000000000002n]);
+    expect(appliedVersions).not.toContain(1000000000003n);
+  });
+
+  test("should migrate from middle version to higher version", async () => {
+    const { store, appliedVersions, mockCalls, setTableExists } =
+      createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    appliedVersions.push(1000000000001n);
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.sql"),
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000002_second.sql"),
+      "-- +goose Up\nCREATE TABLE posts (id INT);\n\n-- +goose Down\nDROP TABLE posts;",
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000003_third.sql"),
+      "-- +goose Up\nCREATE TABLE comments (id INT);\n\n-- +goose Down\nDROP TABLE comments;",
+    );
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    await upToCommand(
+      db,
+      store,
+      {
+        migration_dir: TEST_MIGRATION_DIR,
+        table_name: TEST_TABLE_NAME,
+      },
+      1000000000003n,
+    );
+
+    console.log = originalLog;
+
+    expect(mockCalls.insertVersion).toBe(2);
+    expect(appliedVersions).toEqual([
+      1000000000001n,
+      1000000000002n,
+      1000000000003n,
+    ]);
+  });
+
+  test("should create table if it doesn't exist", async () => {
+    const { store, mockCalls, setTableExists } = createMockStore();
+    const db = createMockDB();
+    setTableExists(false);
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.sql"),
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    await upToCommand(
+      db,
+      store,
+      {
+        migration_dir: TEST_MIGRATION_DIR,
+        table_name: TEST_TABLE_NAME,
+      },
+      1000000000001n,
+    );
+
+    console.log = originalLog;
+
+    expect(mockCalls.createTable).toBe(1);
+  });
+
+  test("should handle TypeScript migrations", async () => {
+    const { store, appliedVersions, mockCalls } = createMockStore();
+    const db = createMockDB();
+
+    const tsMigrationCode = `import type { TransactionSQL } from "bun";
+export const up = async (tx: TransactionSQL) => {};
+export const down = async (tx: TransactionSQL) => {};`;
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.ts"),
+      tsMigrationCode,
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000002_second.ts"),
+      tsMigrationCode,
+    );
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    await upToCommand(
+      db,
+      store,
+      {
+        migration_dir: TEST_MIGRATION_DIR,
+        table_name: TEST_TABLE_NAME,
+      },
+      1000000000002n,
+    );
+
+    console.log = originalLog;
+
+    expect(mockCalls.insertVersion).toBe(2);
+    expect(appliedVersions).toEqual([1000000000001n, 1000000000002n]);
+  });
+});
+
+describe("Commands - downToCommand", () => {
+  test("should exit if table doesn't exist", async () => {
+    const { store, setTableExists } = createMockStore();
+    const db = createMockDB();
+    setTableExists(false);
+
+    const originalExit = process.exit;
+    const originalError = console.error;
+    let exitCode: number | undefined;
+
+    process.exit = mock((code?: number) => {
+      exitCode = code;
+      throw new Error("EXIT");
+    }) as never;
+    console.error = mock(() => {});
+
+    try {
+      await downToCommand(
+        db,
+        store,
+        {
+          migration_dir: TEST_MIGRATION_DIR,
+          table_name: TEST_TABLE_NAME,
+        },
+        1000000000001n,
+      );
+    } catch {
+      // Expected exit
+    }
+
+    process.exit = originalExit;
+    console.error = originalError;
+
+    expect(exitCode).toBe(1);
+  });
+
+  test("should exit if no migrations to rollback", async () => {
+    const { store, setTableExists } = createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    const originalExit = process.exit;
+    const originalLog = console.log;
+    let exitCode: number | undefined;
+
+    process.exit = mock((code?: number) => {
+      exitCode = code;
+      throw new Error("EXIT");
+    }) as never;
+    console.log = mock(() => {});
+
+    try {
+      await downToCommand(
+        db,
+        store,
+        {
+          migration_dir: TEST_MIGRATION_DIR,
+          table_name: TEST_TABLE_NAME,
+        },
+        1000000000001n,
+      );
+    } catch {
+      // Expected exit
+    }
+
+    process.exit = originalExit;
+    console.log = originalLog;
+
+    expect(exitCode).toBe(0);
+  });
+
+  test("should exit if already at target version", async () => {
+    const { store, appliedVersions, setTableExists } = createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.sql"),
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+    appliedVersions.push(1000000000001n);
+
+    const originalExit = process.exit;
+    const originalLog = console.log;
+    let exitCode: number | undefined;
+
+    process.exit = mock((code?: number) => {
+      exitCode = code;
+      throw new Error("EXIT");
+    }) as never;
+    console.log = mock(() => {});
+
+    try {
+      await downToCommand(
+        db,
+        store,
+        {
+          migration_dir: TEST_MIGRATION_DIR,
+          table_name: TEST_TABLE_NAME,
+        },
+        1000000000001n,
+      );
+    } catch {
+      // Expected exit
+    }
+
+    process.exit = originalExit;
+    console.log = originalLog;
+
+    expect(exitCode).toBe(0);
+  });
+
+  test("should exit if current version is lower than target", async () => {
+    const { store, appliedVersions, setTableExists } = createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.sql"),
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000002_second.sql"),
+      "-- +goose Up\nCREATE TABLE posts (id INT);\n\n-- +goose Down\nDROP TABLE posts;",
+    );
+    appliedVersions.push(1000000000001n);
+
+    const originalExit = process.exit;
+    const originalError = console.error;
+    let exitCode: number | undefined;
+
+    process.exit = mock((code?: number) => {
+      exitCode = code;
+      throw new Error("EXIT");
+    }) as never;
+    console.error = mock(() => {});
+
+    try {
+      await downToCommand(
+        db,
+        store,
+        {
+          migration_dir: TEST_MIGRATION_DIR,
+          table_name: TEST_TABLE_NAME,
+        },
+        1000000000002n,
+      );
+    } catch {
+      // Expected exit
+    }
+
+    process.exit = originalExit;
+    console.error = originalError;
+
+    expect(exitCode).toBe(1);
+  });
+
+  test("should exit if target version not found", async () => {
+    const { store, appliedVersions, setTableExists } = createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.sql"),
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+    appliedVersions.push(1000000000001n, 1000000000002n);
+
+    const originalExit = process.exit;
+    const originalError = console.error;
+    let exitCode: number | undefined;
+
+    process.exit = mock((code?: number) => {
+      exitCode = code;
+      throw new Error("EXIT");
+    }) as never;
+    console.error = mock(() => {});
+
+    try {
+      await downToCommand(
+        db,
+        store,
+        {
+          migration_dir: TEST_MIGRATION_DIR,
+          table_name: TEST_TABLE_NAME,
+        },
+        9999999999999n,
+      );
+    } catch {
+      // Expected exit
+    }
+
+    process.exit = originalExit;
+    console.error = originalError;
+
+    expect(exitCode).toBe(1);
+  });
+
+  test("should exit if target version was not applied", async () => {
+    const { store, appliedVersions, setTableExists } = createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.sql"),
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000002_second.sql"),
+      "-- +goose Up\nCREATE TABLE posts (id INT);\n\n-- +goose Down\nDROP TABLE posts;",
+    );
+    appliedVersions.push(1000000000002n);
+
+    const originalExit = process.exit;
+    const originalError = console.error;
+    let exitCode: number | undefined;
+
+    process.exit = mock((code?: number) => {
+      exitCode = code;
+      throw new Error("EXIT");
+    }) as never;
+    console.error = mock(() => {});
+
+    try {
+      await downToCommand(
+        db,
+        store,
+        {
+          migration_dir: TEST_MIGRATION_DIR,
+          table_name: TEST_TABLE_NAME,
+        },
+        1000000000001n,
+      );
+    } catch {
+      // Expected exit
+    }
+
+    process.exit = originalExit;
+    console.error = originalError;
+
+    expect(exitCode).toBe(1);
+  });
+
+  test("should rollback to specific version", async () => {
+    const { store, appliedVersions, mockCalls, setTableExists } =
+      createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.sql"),
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000002_second.sql"),
+      "-- +goose Up\nCREATE TABLE posts (id INT);\n\n-- +goose Down\nDROP TABLE posts;",
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000003_third.sql"),
+      "-- +goose Up\nCREATE TABLE comments (id INT);\n\n-- +goose Down\nDROP TABLE comments;",
+    );
+    appliedVersions.push(1000000000001n, 1000000000002n, 1000000000003n);
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    await downToCommand(
+      db,
+      store,
+      {
+        migration_dir: TEST_MIGRATION_DIR,
+        table_name: TEST_TABLE_NAME,
+      },
+      1000000000001n,
+    );
+
+    console.log = originalLog;
+
+    expect(mockCalls.deleteVersion).toBe(2);
+    expect(appliedVersions).toEqual([1000000000001n]);
+  });
+
+  test("should rollback to zero (all migrations)", async () => {
+    const { store, appliedVersions, mockCalls, setTableExists } =
+      createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.sql"),
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000002_second.sql"),
+      "-- +goose Up\nCREATE TABLE posts (id INT);\n\n-- +goose Down\nDROP TABLE posts;",
+    );
+    appliedVersions.push(1000000000001n, 1000000000002n);
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    await downToCommand(
+      db,
+      store,
+      {
+        migration_dir: TEST_MIGRATION_DIR,
+        table_name: TEST_TABLE_NAME,
+      },
+      0n,
+    );
+
+    console.log = originalLog;
+
+    expect(mockCalls.deleteVersion).toBe(2);
+    expect(appliedVersions.length).toBe(0);
+  });
+
+  test("should handle TypeScript migrations", async () => {
+    const { store, appliedVersions, mockCalls, setTableExists } =
+      createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    const tsMigrationCode = `import type { TransactionSQL } from "bun";
+export const up = async (tx: TransactionSQL) => {};
+export const down = async (tx: TransactionSQL) => {};`;
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.ts"),
+      tsMigrationCode,
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000002_second.ts"),
+      tsMigrationCode,
+    );
+    appliedVersions.push(1000000000001n, 1000000000002n);
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    await downToCommand(
+      db,
+      store,
+      {
+        migration_dir: TEST_MIGRATION_DIR,
+        table_name: TEST_TABLE_NAME,
+      },
+      1000000000001n,
+    );
+
+    console.log = originalLog;
+
+    expect(mockCalls.deleteVersion).toBe(1);
+    expect(appliedVersions).toEqual([1000000000001n]);
+  });
+
+  test("should handle missing local migration file gracefully", async () => {
+    const { store, appliedVersions, mockCalls, setTableExists } =
+      createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.sql"),
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+    // Mark two migrations as applied, but only one file exists
+    appliedVersions.push(1000000000001n, 1000000000002n);
+
+    const originalLog = console.log;
+    const originalError = console.error;
+    console.log = mock(() => {});
+    console.error = mock(() => {});
+
+    await downToCommand(
+      db,
+      store,
+      {
+        migration_dir: TEST_MIGRATION_DIR,
+        table_name: TEST_TABLE_NAME,
+      },
+      1000000000001n,
+    );
+
+    console.log = originalLog;
+    console.error = originalError;
+
+    // Should skip the missing migration file
+    expect(mockCalls.deleteVersion).toBe(0);
+    expect(appliedVersions.length).toBe(2);
   });
 });
