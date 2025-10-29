@@ -750,3 +750,247 @@ WHERE deleted_at IS NULL;`;
     expect(result.statements[1]).toContain("WHERE deleted_at IS NULL");
   });
 });
+
+describe("SQL Parser - Advanced Edge Cases", () => {
+  test("should handle dollar-quoted strings with semicolons (PostgreSQL)", () => {
+    const content = `
+-- +goose Up
+CREATE FUNCTION test_func() RETURNS text AS $$
+BEGIN
+  RETURN 'Hello; World';
+END;
+$$ LANGUAGE plpgsql;
+
+INSERT INTO logs (message) VALUES ('Test;Message');`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain("$$");
+    expect(result.statements[0]).toContain("'Hello; World'");
+    expect(result.statements[1]).toContain("INSERT INTO logs");
+  });
+
+  test("should handle dollar-quoted strings with custom tags", () => {
+    const content = `
+-- +goose Up
+CREATE FUNCTION complex_func() RETURNS text AS $body$
+BEGIN
+  RETURN 'Value; with; semicolons';
+END;
+$body$ LANGUAGE plpgsql;`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(1);
+    expect(result.statements[0]).toContain("$body$");
+    expect(result.statements[0]).toContain("'Value; with; semicolons'");
+  });
+
+  test("should handle block comments with semicolons", () => {
+    const content = `
+-- +goose Up
+/* This is a comment with semicolons; inside */
+CREATE TABLE users (id INT);
+
+/* Multi-line comment
+   with semicolons; and
+   multiple lines */
+INSERT INTO users VALUES (1);`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain("CREATE TABLE");
+    expect(result.statements[1]).toContain("INSERT INTO");
+  });
+
+  test("should handle inline comments after statements", () => {
+    const content = `
+-- +goose Up
+CREATE TABLE users (id INT); -- This comment has semicolons; in it
+INSERT INTO users VALUES (1); -- Another; comment; here`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain("CREATE TABLE");
+    expect(result.statements[1]).toContain("INSERT INTO");
+  });
+
+  test("should handle multi-line string literals", () => {
+    const content = `
+-- +goose Up
+INSERT INTO docs (content) VALUES ('Line 1
+Line 2
+Line 3; with semicolon
+Line 4');
+
+CREATE TABLE test (id INT);`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain("Line 3; with semicolon");
+    expect(result.statements[1]).toContain("CREATE TABLE test");
+  });
+
+  test("should handle SQL escape sequences", () => {
+    const content = `
+-- +goose Up
+INSERT INTO test VALUES ('It''s a test; with semicolon');
+INSERT INTO test VALUES ('Another''s; value');`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain("It''s a test; with semicolon");
+    expect(result.statements[1]).toContain("Another''s; value");
+  });
+
+  test("should handle mixed quotes and identifiers", () => {
+    const content = `
+-- +goose Up
+INSERT INTO "table-name" (col) VALUES ('value; with; semicolons');
+CREATE TABLE "my-table" (id INT);`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain('"table-name"');
+    expect(result.statements[0]).toContain("'value; with; semicolons'");
+    expect(result.statements[1]).toContain('"my-table"');
+  });
+
+  test("should handle nested quotes correctly", () => {
+    const content = `
+-- +goose Up
+INSERT INTO test VALUES ('Single ''quoted'' value; test');
+INSERT INTO test2 VALUES ("Double ""quoted"" identifier");`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain("''quoted''");
+    expect(result.statements[1]).toContain('""quoted""');
+  });
+
+  test("should handle empty dollar-quote tags", () => {
+    const content = `
+-- +goose Up
+SELECT $$ This is; a; string; with; semicolons $$;
+INSERT INTO test VALUES (1);`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain("$$");
+    expect(result.statements[1]).toContain("INSERT INTO test");
+  });
+
+  test("should handle complex real-world PostgreSQL function", () => {
+    const content = `
+-- +goose Up
+-- +goose StatementBegin
+CREATE OR REPLACE FUNCTION update_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Update timestamp; regardless of changes
+    NEW.updated_at = NOW();
+    /* Multiple semicolons; in comments */
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+-- +goose StatementEnd
+
+CREATE TRIGGER update_users_timestamp
+    BEFORE UPDATE ON users
+    FOR EACH ROW
+    EXECUTE FUNCTION update_timestamp();`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain("CREATE OR REPLACE FUNCTION");
+    expect(result.statements[0]).toContain("$$");
+    expect(result.statements[1]).toContain("CREATE TRIGGER");
+  });
+
+  test("should handle statements with only comments before them", () => {
+    const content = `
+-- +goose Up
+-- This is a leading comment
+-- Another comment; with semicolon
+CREATE TABLE users (id INT);
+
+/* Block comment
+   before statement */
+INSERT INTO users VALUES (1);`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain("CREATE TABLE");
+    expect(result.statements[1]).toContain("INSERT INTO");
+  });
+
+  test("should handle multiple statements with complex mix of features", () => {
+    const content = `
+-- +goose Up
+-- Leading comment
+INSERT INTO test VALUES ('value; 1'); -- inline comment;
+/* Block comment; */ SELECT * FROM test WHERE x = 'y; z';
+UPDATE test SET val = $tag$text; here$tag$ WHERE id = 1;`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(3);
+    expect(result.statements[0]).toContain("INSERT");
+    expect(result.statements[1]).toContain("SELECT");
+    expect(result.statements[2]).toContain("UPDATE");
+  });
+
+  test("should handle ENVSUB feature toggle", () => {
+    // Set environment variable for test
+    process.env.TEST_VAR = "test_value";
+
+    const content = `
+-- +goose Up
+-- +goose ENVSUB ON
+INSERT INTO config (key, value) VALUES ('test', '\${TEST_VAR}');
+-- +goose ENVSUB OFF
+INSERT INTO config (key, value) VALUES ('raw', '\\$\\{NOT_EXPANDED\\}');`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain("test_value");
+    expect(result.statements[1]).toContain("\\$\\{NOT_EXPANDED\\}");
+
+    delete process.env.TEST_VAR;
+  });
+
+  test("should handle very long statements without issues", () => {
+    const longValue = "x".repeat(10000);
+    const content = `
+-- +goose Up
+INSERT INTO test (data) VALUES ('${longValue}; with; semicolons');
+CREATE TABLE test2 (id INT);`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]?.length).toBeGreaterThan(10000);
+    expect(result.statements[1]).toContain("CREATE TABLE test2");
+  });
+
+  test("should handle statements ending with semicolon and comment", () => {
+    const content = `
+-- +goose Up
+CREATE TABLE test (id INT); -- comment with; semicolons
+INSERT INTO test VALUES (1); /* block comment; */`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain("CREATE TABLE");
+    expect(result.statements[1]).toContain("INSERT INTO");
+  });
+
+  test("should preserve whitespace in string literals", () => {
+    const content = `
+-- +goose Up
+INSERT INTO test VALUES ('  leading spaces  ');
+INSERT INTO test VALUES ('	tabs	inside');`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain("  leading spaces  ");
+    expect(result.statements[1]).toContain("	tabs	");
+  });
+});

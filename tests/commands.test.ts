@@ -195,7 +195,7 @@ describe("Commands - upCommand", () => {
         migration_dir: TEST_MIGRATION_DIR,
         table_name: TEST_TABLE_NAME,
       });
-    } catch (e) {
+    } catch {
       // Expected exit
     }
 
@@ -331,7 +331,7 @@ describe("Commands - upCommand", () => {
         migration_dir: TEST_MIGRATION_DIR,
         table_name: TEST_TABLE_NAME,
       });
-    } catch (e) {
+    } catch {
       // Expected exit
     }
 
@@ -432,7 +432,7 @@ describe("Commands - upByOneCommand", () => {
         migration_dir: TEST_MIGRATION_DIR,
         table_name: TEST_TABLE_NAME,
       });
-    } catch (e) {
+    } catch {
       // Expected exit
     }
 
@@ -488,7 +488,7 @@ describe("Commands - downCommand", () => {
         migration_dir: TEST_MIGRATION_DIR,
         table_name: TEST_TABLE_NAME,
       });
-    } catch (e) {
+    } catch {
       // Expected exit
     }
 
@@ -518,7 +518,7 @@ describe("Commands - downCommand", () => {
         migration_dir: TEST_MIGRATION_DIR,
         table_name: TEST_TABLE_NAME,
       });
-    } catch (e) {
+    } catch {
       // Expected exit
     }
 
@@ -611,7 +611,7 @@ describe("Commands - downCommand", () => {
         migration_dir: TEST_MIGRATION_DIR,
         table_name: TEST_TABLE_NAME,
       });
-    } catch (e) {
+    } catch {
       // Expected exit
     }
 
@@ -688,14 +688,14 @@ describe("Commands - No Transaction Tests", () => {
     const { store, executedStatements, appliedVersions } = createMockStore();
     const db = createMockDB();
 
-    // Create a migration with NO TRANSACTION directive
+    // Create a migration with NO TRANSACTION directive at the top (applies to both up and down)
     const migrationFile = path.join(
       TEST_MIGRATION_DIR,
       "1000000000000_no_transaction.sql",
     );
     await writeFile(
       migrationFile,
-      "-- +goose Up\n-- +goose NO TRANSACTION\nCREATE INDEX CONCURRENTLY idx_users_email ON users(email);\n\n-- +goose Down\nDROP INDEX IF EXISTS idx_users_email;",
+      "-- +goose NO TRANSACTION\n-- +goose Up\nCREATE INDEX CONCURRENTLY idx_users_email ON users(email);\n\n-- +goose Down\nDROP INDEX IF EXISTS idx_users_email;",
     );
 
     const originalLog = console.log;
@@ -730,14 +730,14 @@ describe("Commands - No Transaction Tests", () => {
     const db = createMockDB();
     setTableExists(true);
 
-    // Create a migration with NO TRANSACTION directive
+    // Create a migration with NO TRANSACTION directive at the top (applies to both up and down)
     const migrationFile = path.join(
       TEST_MIGRATION_DIR,
       "1000000000000_no_transaction.sql",
     );
     await writeFile(
       migrationFile,
-      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\n-- +goose NO TRANSACTION\nDROP INDEX CONCURRENTLY IF EXISTS idx_users_email;",
+      "-- +goose NO TRANSACTION\n-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP INDEX CONCURRENTLY IF EXISTS idx_users_email;",
     );
     appliedVersions.push(1000000000000n);
 
@@ -809,14 +809,14 @@ describe("Commands - No Transaction Tests", () => {
     const { store, executedStatements, appliedVersions } = createMockStore();
     const db = createMockDB();
 
-    // Create a migration with NO TRANSACTION directive
+    // Create a migration with NO TRANSACTION directive at the top (applies to both up and down)
     const migrationFile = path.join(
       TEST_MIGRATION_DIR,
       "1000000000001_no_transaction.sql",
     );
     await writeFile(
       migrationFile,
-      "-- +goose Up\n-- +goose NO TRANSACTION\nCREATE INDEX CONCURRENTLY idx_users_name ON users(name);\n\n-- +goose Down\nDROP INDEX IF EXISTS idx_users_name;",
+      "-- +goose NO TRANSACTION\n-- +goose Up\nCREATE INDEX CONCURRENTLY idx_users_name ON users(name);\n\n-- +goose Down\nDROP INDEX IF EXISTS idx_users_name;",
     );
 
     const originalLog = console.log;
@@ -849,14 +849,14 @@ describe("Commands - No Transaction Tests", () => {
     const { store, appliedVersions } = createMockStore();
     const db = createMockDB();
 
-    // Create multiple migrations with NO TRANSACTION directive
+    // Create multiple migrations with NO TRANSACTION directive at the top
     await writeFile(
       path.join(TEST_MIGRATION_DIR, "1000000000001_first_no_tx.sql"),
-      "-- +goose Up\n-- +goose NO TRANSACTION\nCREATE INDEX CONCURRENTLY idx_users_email ON users(email);\n\n-- +goose Down\nDROP INDEX IF EXISTS idx_users_email;",
+      "-- +goose NO TRANSACTION\n-- +goose Up\nCREATE INDEX CONCURRENTLY idx_users_email ON users(email);\n\n-- +goose Down\nDROP INDEX IF EXISTS idx_users_email;",
     );
     await writeFile(
       path.join(TEST_MIGRATION_DIR, "1000000000002_second_no_tx.sql"),
-      "-- +goose Up\n-- +goose NO TRANSACTION\nCREATE INDEX CONCURRENTLY idx_posts_user_id ON posts(user_id);\n\n-- +goose Down\nDROP INDEX IF EXISTS idx_posts_user_id;",
+      "-- +goose NO TRANSACTION\n-- +goose Up\nCREATE INDEX CONCURRENTLY idx_posts_user_id ON posts(user_id);\n\n-- +goose Down\nDROP INDEX IF EXISTS idx_posts_user_id;",
     );
 
     const originalLog = console.log;
@@ -891,7 +891,7 @@ describe("Commands - No Transaction Tests", () => {
     );
     await writeFile(
       path.join(TEST_MIGRATION_DIR, "1000000000002_no_tx.sql"),
-      "-- +goose Up\n-- +goose NO TRANSACTION\nCREATE INDEX CONCURRENTLY idx_users_id ON users(id);\n\n-- +goose Down\nDROP INDEX IF EXISTS idx_users_id;",
+      "-- +goose NO TRANSACTION\n-- +goose Up\nCREATE INDEX CONCURRENTLY idx_users_id ON users(id);\n\n-- +goose Down\nDROP INDEX IF EXISTS idx_users_id;",
     );
     await writeFile(
       path.join(TEST_MIGRATION_DIR, "1000000000003_with_tx_again.sql"),
