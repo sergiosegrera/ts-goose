@@ -58,11 +58,11 @@ export const createMigration = async (
       `import type { TransactionSQL } from "bun";
 
 export const up = async (tx: TransactionSQL) => {
-	await tx("");
+	await tx\`\`;
 };
 
 export const down = async (tx: TransactionSQL) => {
-	await tx("");
+	await tx\`\`;
 };`,
     );
   }
