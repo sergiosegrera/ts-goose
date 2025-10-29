@@ -1,3 +1,7 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import type { MigrationDirection } from "./migration";
+
 /**
  * SQL Parser with state machine support for complex statements
  * Handles PL/pgSQL blocks annotated with -- +goose StatementBegin/StatementEnd
@@ -5,6 +9,7 @@
 
 export const UP_COMMENT = "-- +goose Up";
 export const DOWN_COMMENT = "-- +goose Down";
+export const NO_TRANSACTION_COMMENT = "-- +goose NO TRANSACTION";
 
 enum ParserState {
   NORMAL = "NORMAL",
@@ -13,6 +18,7 @@ enum ParserState {
 
 interface ParseResult {
   statements: string[];
+  transaction: boolean;
 }
 
 /**
@@ -20,17 +26,93 @@ interface ParseResult {
  * Supports:
  * - Simple statements separated by semicolons
  * - Complex statements (e.g., PL/pgSQL) wrapped in -- +goose StatementBegin/StatementEnd
+ * - Transaction control via -- +goose NO TRANSACTION directive
+ *
+ * When direction is specified and UP/DOWN markers exist, will extract that section.
+ * Otherwise, parses the content as-is.
  */
-export function parseSqlStatements(content: string): ParseResult {
-  const lines = content.split("\n");
+export async function parseSQLFile(
+  direction: MigrationDirection,
+  folder: string,
+  version: { version_id: bigint; file_name: string },
+): Promise<ParseResult> {
+  const file_content = await readFile(
+    path.join(folder, version.file_name),
+    "utf8",
+  );
+
+  return parseSqlStatements(file_content, direction);
+}
+
+/**
+ * Parse SQL content string into individual statements.
+ * Supports:
+ * - Simple statements separated by semicolons
+ * - Complex statements (e.g., PL/pgSQL) wrapped in -- +goose StatementBegin/StatementEnd
+ * - Transaction control via -- +goose NO TRANSACTION directive
+ *
+ * When direction is specified and UP/DOWN markers exist, will extract that section.
+ * Otherwise, parses the content as-is.
+ */
+export function parseSqlStatements(
+  content: string,
+  direction: MigrationDirection = "up",
+): ParseResult {
   const statements: string[] = [];
   let currentStatement: string[] = [];
   let state: ParserState = ParserState.NORMAL;
+  let transaction = true; // Default: use transactions
+
+  const trimmedContent = content.trim();
+
+  // Check if NO TRANSACTION is at the very beginning
+  if (
+    trimmedContent.startsWith(NO_TRANSACTION_COMMENT) ||
+    trimmedContent.startsWith("--+goose NO TRANSACTION")
+  ) {
+    transaction = false;
+  }
+
+  // Check if content has UP/DOWN markers
+  const hasUpMarker = content.includes(UP_COMMENT);
+  const hasDownMarker = content.includes(DOWN_COMMENT);
+
+  let contentToParse = content;
+
+  // Only try to extract sections if markers exist
+  if (hasUpMarker || hasDownMarker) {
+    if (direction === "up") {
+      contentToParse = extractUpSection(content, UP_COMMENT, DOWN_COMMENT);
+    } else if (direction === "down") {
+      contentToParse = extractDownSection(content, DOWN_COMMENT);
+    } else {
+      throw new Error(`Invalid direction: ${direction}`);
+    }
+  }
+
+  // After extracting, check again for NO TRANSACTION directive in the extracted content
+  const trimmedContentToParse = contentToParse.trim();
+  if (
+    trimmedContentToParse.startsWith(NO_TRANSACTION_COMMENT) ||
+    trimmedContentToParse.startsWith("--+goose NO TRANSACTION")
+  ) {
+    transaction = false;
+  }
+
+  const lines = contentToParse.split("\n");
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!line) continue;
     const trimmedLine = line.trim();
+
+    // Skip the NO TRANSACTION directive line
+    if (
+      trimmedLine === NO_TRANSACTION_COMMENT ||
+      trimmedLine === "--+goose NO TRANSACTION"
+    ) {
+      continue;
+    }
 
     // Check for StatementBegin marker
     if (
@@ -124,7 +206,7 @@ export function parseSqlStatements(content: string): ParseResult {
     }
   }
 
-  return { statements };
+  return { statements, transaction };
 }
 
 /**

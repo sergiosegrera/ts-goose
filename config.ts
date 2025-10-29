@@ -1,4 +1,4 @@
-export const DEFAULT_FOLDER = "migrations";
+export const DEFAULT_FOLDER = "./migrations";
 export const DEFAULT_TABLE_NAME = "tsgoose.migration";
 export const DEFAULT_DRIVER = "postgres";
 export const DEFAULT_DB_URL =

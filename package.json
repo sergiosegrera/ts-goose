@@ -30,6 +30,7 @@
     "migration",
     "database",
     "postgres",
+    "sqlite",
     "bun",
     "typescript",
     "cli"

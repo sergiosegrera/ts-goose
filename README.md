@@ -2,7 +2,10 @@
 
 # ts-goose
 
-A lightweight database migration tool for TypeScript and Bun, inspired by goose.
+A lightweight database migration tool for TypeScript and Bun, inspired by [goose](https://github.com/pressly/goose).
+
+It supports both SQL and TypeScript migrations, and currently supports PostgreSQL and SQLite.
+
 
 ## Installation
 
@@ -65,14 +68,16 @@ bunx @ssegrera/ts-goose down
 ## Configuration
 
 The following environment variables can be used to configure the tool:
-- `TSGOOSE_DRIVER` - The database driver to use (currently only `postgres` is supported)
-- `TSGOOSE_DBSTRING` - The database connection string to use (defaults to `postgresql://postgres:postgres@localhost:5432/postgres`)
-- `TSGOOSE_MIGRATION_DIR` - The directory containing the migration files (defaults to `migrations`)
+- `TSGOOSE_DRIVER` - The database driver to use (`postgres` or `sqlite`, defaults to `postgres`)
+- `TSGOOSE_DBSTRING` - The database connection string to use (defaults to `postgresql://postgres:postgres@localhost:5432/postgres` for postgres, or a file path like `./database.sqlite` for sqlite)
+- `TSGOOSE_MIGRATION_DIR` - The directory containing the migration files (defaults to `./migrations`)
 - `TSGOOSE_TABLE_NAME` - The name of the table to use for storing the migration history (defaults to `tsgoose.migration`)
 
 ## Using as a Library
 
 You can also use ts-goose programmatically in your TypeScript/Bun projects:
+
+### PostgreSQL Example
 
 ```typescript
 import { SQL } from "bun";
@@ -90,6 +95,7 @@ await upCommand(db, PostgresStore, {
 // Close connection
 await db.end();
 ```
+
 
 This allows you to integrate migration execution into your application startup, tests, or custom deployment scripts.
 

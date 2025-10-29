@@ -1,4 +1,4 @@
-import type { SQL } from "bun";
+import type { SQL, TransactionSQL } from "bun";
 import type { Store } from "./store";
 
 const checkTableExists = async (db: SQL, tableName: string) => {
@@ -13,9 +13,9 @@ const checkTableExists = async (db: SQL, tableName: string) => {
 
 const createTable = async (db: SQL, tableName: string) => {
   await db.unsafe(`create table if not exists "${tableName}" (
-        id uuid primary key not null default gen_random_uuid(),
-        version_id bigint not null,
-        applied_at timestamp not null default current_timestamp
+        id text primary key not null default (lower(hex(randomblob(16)))),
+        version_id integer not null,
+        applied_at text not null default (datetime('now'))
     )`);
 };
 
@@ -23,7 +23,7 @@ const getVersions = async (
   db: SQL,
   tableName: string,
 ): Promise<{ version_id: bigint; applied_at: Date }[]> => {
-  const result = await db.unsafe<{ version_id: bigint; applied_at: Date }[]>(
+  const result = await db.unsafe<{ version_id: bigint; applied_at: string }[]>(
     `select version_id, applied_at from "${tableName}" order by applied_at asc`,
   );
   return result.map((row) => ({
@@ -61,7 +61,7 @@ const runMigration = async (
   }
 };
 
-export const PostgresStore: Store = {
+export const SQLiteStore: Store = {
   checkTableExists,
   createTable,
   getVersions,

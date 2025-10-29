@@ -1,5 +1,5 @@
 import { DEFAULT_CONFIG } from "../config";
-import { createMigration } from "../create";
+import { createMigration } from "../migration";
 
 export async function createCommand(args: string[]) {
   const name = args[0];

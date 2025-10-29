@@ -1,6 +1,6 @@
 import type { SQL } from "bun";
-import { getMigrationVersions } from "../create";
 import { APP_NAME } from "../init";
+import { getMigrationVersions } from "../migration";
 import type { Store } from "../store";
 
 function formatDate(date: Date): string {

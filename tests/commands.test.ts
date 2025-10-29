@@ -45,18 +45,20 @@ function createMockStore() {
         applied_at: new Date(),
       }));
     }),
-    runMigration: mock(async (_tx: TransactionSQL, statement: string) => {
-      mockCalls.runMigration++;
-      executedStatements.push(statement);
-    }),
+    runMigration: mock(
+      async (_db: SQL, statements: string[], _transaction: boolean) => {
+        mockCalls.runMigration++;
+        executedStatements.push(...statements);
+      },
+    ),
     insertVersion: mock(
-      async (_tx: TransactionSQL, _tableName: string, version: bigint) => {
+      async (_db: SQL, _tableName: string, version: bigint) => {
         mockCalls.insertVersion++;
         appliedVersions.push(version);
       },
     ),
     deleteVersion: mock(
-      async (_tx: TransactionSQL, _tableName: string, version: bigint) => {
+      async (_db: SQL, _tableName: string, version: bigint) => {
         mockCalls.deleteVersion++;
         const index = appliedVersions.indexOf(version);
         if (index > -1) {
@@ -228,7 +230,7 @@ describe("Commands - upCommand", () => {
 
     console.log = originalLog;
 
-    expect(mockCalls.runMigration).toBe(2);
+    expect(mockCalls.runMigration).toBe(1);
     expect(mockCalls.insertVersion).toBe(1);
     expect(executedStatements).toContain("CREATE TABLE users (id INT);");
     expect(executedStatements).toContain("INSERT INTO users (id) VALUES (1);");
@@ -681,6 +683,247 @@ DROP TABLE users;`,
   });
 });
 
+describe("Commands - No Transaction Tests", () => {
+  test("should handle NO TRANSACTION directive in up migration", async () => {
+    const { store, executedStatements, appliedVersions } = createMockStore();
+    const db = createMockDB();
+
+    // Create a migration with NO TRANSACTION directive
+    const migrationFile = path.join(
+      TEST_MIGRATION_DIR,
+      "1000000000000_no_transaction.sql",
+    );
+    await writeFile(
+      migrationFile,
+      "-- +goose Up\n-- +goose NO TRANSACTION\nCREATE INDEX CONCURRENTLY idx_users_email ON users(email);\n\n-- +goose Down\nDROP INDEX IF EXISTS idx_users_email;",
+    );
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    // Track what transaction value was passed to runMigration
+    let capturedTransaction: boolean | undefined;
+    store.runMigration = mock(
+      async (_db: SQL, statements: string[], transaction: boolean) => {
+        capturedTransaction = transaction;
+        executedStatements.push(...statements);
+      },
+    );
+
+    await upCommand(db, store, {
+      migration_dir: TEST_MIGRATION_DIR,
+      table_name: TEST_TABLE_NAME,
+    });
+
+    console.log = originalLog;
+
+    expect(capturedTransaction).toBe(false);
+    expect(executedStatements).toContain(
+      "CREATE INDEX CONCURRENTLY idx_users_email ON users(email);",
+    );
+    expect(appliedVersions).toContain(1000000000000n);
+  });
+
+  test("should handle NO TRANSACTION directive in down migration", async () => {
+    const { store, executedStatements, appliedVersions, setTableExists } =
+      createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    // Create a migration with NO TRANSACTION directive
+    const migrationFile = path.join(
+      TEST_MIGRATION_DIR,
+      "1000000000000_no_transaction.sql",
+    );
+    await writeFile(
+      migrationFile,
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\n-- +goose NO TRANSACTION\nDROP INDEX CONCURRENTLY IF EXISTS idx_users_email;",
+    );
+    appliedVersions.push(1000000000000n);
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    // Track what transaction value was passed to runMigration
+    let capturedTransaction: boolean | undefined;
+    store.runMigration = mock(
+      async (_db: SQL, statements: string[], transaction: boolean) => {
+        capturedTransaction = transaction;
+        executedStatements.push(...statements);
+      },
+    );
+
+    await downCommand(db, store, {
+      migration_dir: TEST_MIGRATION_DIR,
+      table_name: TEST_TABLE_NAME,
+    });
+
+    console.log = originalLog;
+
+    expect(capturedTransaction).toBe(false);
+    expect(executedStatements).toContain(
+      "DROP INDEX CONCURRENTLY IF EXISTS idx_users_email;",
+    );
+    expect(appliedVersions).not.toContain(1000000000000n);
+  });
+
+  test("should default to transaction mode when NO TRANSACTION not specified", async () => {
+    const { store, executedStatements, appliedVersions } = createMockStore();
+    const db = createMockDB();
+
+    // Create a migration without NO TRANSACTION directive
+    const migrationFile = path.join(
+      TEST_MIGRATION_DIR,
+      "1000000000000_with_transaction.sql",
+    );
+    await writeFile(
+      migrationFile,
+      "-- +goose Up\nCREATE TABLE users (id INT);\nINSERT INTO users (id) VALUES (1);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    // Track what transaction value was passed to runMigration
+    let capturedTransaction: boolean | undefined;
+    store.runMigration = mock(
+      async (_db: SQL, statements: string[], transaction: boolean) => {
+        capturedTransaction = transaction;
+        executedStatements.push(...statements);
+      },
+    );
+
+    await upCommand(db, store, {
+      migration_dir: TEST_MIGRATION_DIR,
+      table_name: TEST_TABLE_NAME,
+    });
+
+    console.log = originalLog;
+
+    expect(capturedTransaction).toBe(true);
+    expect(executedStatements).toContain("CREATE TABLE users (id INT);");
+    expect(appliedVersions).toContain(1000000000000n);
+  });
+
+  test("should handle upByOneCommand with NO TRANSACTION", async () => {
+    const { store, executedStatements, appliedVersions } = createMockStore();
+    const db = createMockDB();
+
+    // Create a migration with NO TRANSACTION directive
+    const migrationFile = path.join(
+      TEST_MIGRATION_DIR,
+      "1000000000001_no_transaction.sql",
+    );
+    await writeFile(
+      migrationFile,
+      "-- +goose Up\n-- +goose NO TRANSACTION\nCREATE INDEX CONCURRENTLY idx_users_name ON users(name);\n\n-- +goose Down\nDROP INDEX IF EXISTS idx_users_name;",
+    );
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    // Track what transaction value was passed to runMigration
+    let capturedTransaction: boolean | undefined;
+    store.runMigration = mock(
+      async (_db: SQL, statements: string[], transaction: boolean) => {
+        capturedTransaction = transaction;
+        executedStatements.push(...statements);
+      },
+    );
+
+    await upByOneCommand(db, store, {
+      migration_dir: TEST_MIGRATION_DIR,
+      table_name: TEST_TABLE_NAME,
+    });
+
+    console.log = originalLog;
+
+    expect(capturedTransaction).toBe(false);
+    expect(executedStatements).toContain(
+      "CREATE INDEX CONCURRENTLY idx_users_name ON users(name);",
+    );
+    expect(appliedVersions).toContain(1000000000001n);
+  });
+
+  test("should handle multiple NO TRANSACTION migrations", async () => {
+    const { store, appliedVersions } = createMockStore();
+    const db = createMockDB();
+
+    // Create multiple migrations with NO TRANSACTION directive
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first_no_tx.sql"),
+      "-- +goose Up\n-- +goose NO TRANSACTION\nCREATE INDEX CONCURRENTLY idx_users_email ON users(email);\n\n-- +goose Down\nDROP INDEX IF EXISTS idx_users_email;",
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000002_second_no_tx.sql"),
+      "-- +goose Up\n-- +goose NO TRANSACTION\nCREATE INDEX CONCURRENTLY idx_posts_user_id ON posts(user_id);\n\n-- +goose Down\nDROP INDEX IF EXISTS idx_posts_user_id;",
+    );
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    const transactionValues: boolean[] = [];
+    store.runMigration = mock(
+      async (_db: SQL, _statements: string[], transaction: boolean) => {
+        transactionValues.push(transaction);
+      },
+    );
+
+    await upCommand(db, store, {
+      migration_dir: TEST_MIGRATION_DIR,
+      table_name: TEST_TABLE_NAME,
+    });
+
+    console.log = originalLog;
+
+    expect(transactionValues).toEqual([false, false]);
+    expect(appliedVersions).toEqual([1000000000001n, 1000000000002n]);
+  });
+
+  test("should handle mixed transaction and NO TRANSACTION migrations", async () => {
+    const { store, appliedVersions } = createMockStore();
+    const db = createMockDB();
+
+    // Create mix of transaction and no-transaction migrations
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_with_tx.sql"),
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000002_no_tx.sql"),
+      "-- +goose Up\n-- +goose NO TRANSACTION\nCREATE INDEX CONCURRENTLY idx_users_id ON users(id);\n\n-- +goose Down\nDROP INDEX IF EXISTS idx_users_id;",
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000003_with_tx_again.sql"),
+      "-- +goose Up\nALTER TABLE users ADD COLUMN name VARCHAR(255);\n\n-- +goose Down\nALTER TABLE users DROP COLUMN name;",
+    );
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    const transactionValues: boolean[] = [];
+    store.runMigration = mock(
+      async (_db: SQL, _statements: string[], transaction: boolean) => {
+        transactionValues.push(transaction);
+      },
+    );
+
+    await upCommand(db, store, {
+      migration_dir: TEST_MIGRATION_DIR,
+      table_name: TEST_TABLE_NAME,
+    });
+
+    console.log = originalLog;
+
+    expect(transactionValues).toEqual([true, false, true]);
+    expect(appliedVersions).toEqual([
+      1000000000001n,
+      1000000000002n,
+      1000000000003n,
+    ]);
+  });
+});
+
 describe("Commands - Integration Tests", () => {
   test("should apply migrations with up and rollback with down", async () => {
     const { store, appliedVersions, executedStatements } = createMockStore();
@@ -773,5 +1016,188 @@ describe("Commands - Integration Tests", () => {
     ]);
 
     console.log = originalLog;
+  });
+});
+
+describe("Commands - TypeScript Migrations", () => {
+  test("should apply a typescript up migration", async () => {
+    const { store, mockCalls, appliedVersions } = createMockStore();
+    const db = createMockDB();
+
+    // Create a TypeScript migration file
+    const tsMigrationCode = `import type { TransactionSQL } from "bun";
+
+export const up = async (tx: TransactionSQL) => {
+  // Mock implementation - just tracks that it was called
+};
+
+export const down = async (tx: TransactionSQL) => {
+  // Mock implementation
+};`;
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000000_create_users.ts"),
+      tsMigrationCode,
+    );
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    await upCommand(db, store, {
+      migration_dir: TEST_MIGRATION_DIR,
+      table_name: TEST_TABLE_NAME,
+    });
+
+    console.log = originalLog;
+
+    expect(mockCalls.insertVersion).toBe(1);
+    expect(appliedVersions).toContain(1000000000000n);
+  });
+
+  test("should rollback a typescript down migration", async () => {
+    const { store, mockCalls, appliedVersions, setTableExists } =
+      createMockStore();
+    const db = createMockDB();
+    setTableExists(true);
+
+    // Create a TypeScript migration file
+    const tsMigrationCode = `import type { TransactionSQL } from "bun";
+
+export const up = async (tx: TransactionSQL) => {
+  // Mock implementation
+};
+
+export const down = async (tx: TransactionSQL) => {
+  // Mock implementation
+};`;
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000000_drop_users.ts"),
+      tsMigrationCode,
+    );
+
+    // Mark migration as already applied
+    appliedVersions.push(1000000000000n);
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    await downCommand(db, store, {
+      migration_dir: TEST_MIGRATION_DIR,
+      table_name: TEST_TABLE_NAME,
+    });
+
+    console.log = originalLog;
+
+    expect(mockCalls.deleteVersion).toBe(1);
+    expect(appliedVersions).not.toContain(1000000000000n);
+  });
+
+  test("should apply multiple typescript migrations in order", async () => {
+    const { store, mockCalls, appliedVersions } = createMockStore();
+    const db = createMockDB();
+
+    // Create multiple TypeScript migration files
+    const tsMigrationCode1 = `import type { TransactionSQL } from "bun";
+export const up = async (tx: TransactionSQL) => {};
+export const down = async (tx: TransactionSQL) => {};`;
+
+    const tsMigrationCode2 = `import type { TransactionSQL } from "bun";
+export const up = async (tx: TransactionSQL) => {};
+export const down = async (tx: TransactionSQL) => {};`;
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first_migration.ts"),
+      tsMigrationCode1,
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000002_second_migration.ts"),
+      tsMigrationCode2,
+    );
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    await upCommand(db, store, {
+      migration_dir: TEST_MIGRATION_DIR,
+      table_name: TEST_TABLE_NAME,
+    });
+
+    console.log = originalLog;
+
+    expect(mockCalls.insertVersion).toBe(2);
+    expect(appliedVersions).toEqual([1000000000001n, 1000000000002n]);
+  });
+
+  test("should handle mixed SQL and TypeScript migrations", async () => {
+    const { store, mockCalls, appliedVersions } = createMockStore();
+    const db = createMockDB();
+
+    // Create SQL migration
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_sql_migration.sql"),
+      "-- +goose Up\nCREATE TABLE users (id INT);\n\n-- +goose Down\nDROP TABLE users;",
+    );
+
+    // Create TypeScript migration
+    const tsMigrationCode = `import type { TransactionSQL } from "bun";
+export const up = async (tx: TransactionSQL) => {};
+export const down = async (tx: TransactionSQL) => {};`;
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000002_ts_migration.ts"),
+      tsMigrationCode,
+    );
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    await upCommand(db, store, {
+      migration_dir: TEST_MIGRATION_DIR,
+      table_name: TEST_TABLE_NAME,
+    });
+
+    console.log = originalLog;
+
+    expect(mockCalls.insertVersion).toBe(2);
+    expect(appliedVersions).toEqual([1000000000001n, 1000000000002n]);
+  });
+
+  test("should apply typescript migration with upByOneCommand", async () => {
+    const { store, mockCalls, appliedVersions } = createMockStore();
+    const db = createMockDB();
+
+    // Create multiple TypeScript migrations
+    const tsMigrationCode1 = `import type { TransactionSQL } from "bun";
+export const up = async (tx: TransactionSQL) => {};
+export const down = async (tx: TransactionSQL) => {};`;
+
+    const tsMigrationCode2 = `import type { TransactionSQL } from "bun";
+export const up = async (tx: TransactionSQL) => {};
+export const down = async (tx: TransactionSQL) => {};`;
+
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000001_first.ts"),
+      tsMigrationCode1,
+    );
+    await writeFile(
+      path.join(TEST_MIGRATION_DIR, "1000000000002_second.ts"),
+      tsMigrationCode2,
+    );
+
+    const originalLog = console.log;
+    console.log = mock(() => {});
+
+    // Apply only first migration
+    await upByOneCommand(db, store, {
+      migration_dir: TEST_MIGRATION_DIR,
+      table_name: TEST_TABLE_NAME,
+    });
+
+    console.log = originalLog;
+
+    expect(mockCalls.insertVersion).toBe(1);
+    expect(appliedVersions).toEqual([1000000000001n]);
+    expect(appliedVersions).not.toContain(1000000000002n);
   });
 });

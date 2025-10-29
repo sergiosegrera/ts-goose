@@ -1,4 +1,4 @@
-import type { SQL, TransactionSQL } from "bun";
+import type { SQL } from "bun";
 
 export interface Store {
   checkTableExists: (db: SQL, tableName: string) => Promise<boolean>;
@@ -7,15 +7,11 @@ export interface Store {
     db: SQL,
     tableName: string,
   ) => Promise<{ version_id: bigint; applied_at: Date }[]>;
-  runMigration: (tx: TransactionSQL, statement: string) => Promise<void>;
-  insertVersion: (
-    tx: TransactionSQL,
-    tableName: string,
-    version: bigint,
+  runMigration: (
+    db: SQL,
+    statements: string[],
+    transaction: boolean,
   ) => Promise<void>;
-  deleteVersion: (
-    tx: TransactionSQL,
-    tableName: string,
-    version: bigint,
-  ) => Promise<void>;
+  insertVersion: (db: SQL, tableName: string, version: bigint) => Promise<void>;
+  deleteVersion: (db: SQL, tableName: string, version: bigint) => Promise<void>;
 }

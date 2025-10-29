@@ -7,12 +7,17 @@ export { statusCommand } from "./commands/status";
 export { upCommand } from "./commands/up";
 export type { Config } from "./config";
 export { DEFAULT_CONFIG } from "./config";
+export { APP_NAME, initializeDatabase } from "./init";
 export {
   createMigration,
-  getMigrationDownStatements,
-  getMigrationUpStatements,
+  getMigrations,
   getMigrationVersions,
-} from "./create";
-export { APP_NAME, initializeDatabase } from "./init";
+  type Migration,
+  type MigrationDirection,
+  type MigrationType,
+  type MigrationVersion,
+  runMigration,
+} from "./migration";
 export type { Store } from "./store";
 export { PostgresStore } from "./store-postgres";
+export { SQLiteStore } from "./store-sqlite";

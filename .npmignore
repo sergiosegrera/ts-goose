@@ -12,6 +12,9 @@ node_modules/
 docker-compose.yaml
 ts-goose.yaml
 CLAUDE.md
+.postgres/
+.sqlite/
+
 
 # Migration examples
 migrations/

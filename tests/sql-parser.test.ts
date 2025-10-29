@@ -594,3 +594,159 @@ describe("SQL Parser - Migration File Validation", () => {
     expect(() => validateMigrationFile(FULL_MIGRATION_FILE)).not.toThrow();
   });
 });
+
+describe("SQL Parser - NO TRANSACTION Directive", () => {
+  test("should recognize NO TRANSACTION directive at start of content", () => {
+    const content = `-- +goose NO TRANSACTION
+CREATE INDEX CONCURRENTLY idx_users_email ON users(email);`;
+    const result = parseSqlStatements(content);
+    expect(result.transaction).toBe(false);
+    expect(result.statements).toHaveLength(1);
+    expect(result.statements[0]).toContain("CREATE INDEX CONCURRENTLY");
+  });
+
+  test("should recognize alternative NO TRANSACTION format", () => {
+    const content = `--+goose NO TRANSACTION
+CREATE INDEX CONCURRENTLY idx_users_id ON users(id);`;
+    const result = parseSqlStatements(content);
+    expect(result.transaction).toBe(false);
+    expect(result.statements).toHaveLength(1);
+  });
+
+  test("should default to transaction mode when NO TRANSACTION not specified", () => {
+    const content = `CREATE TABLE users (id INT);`;
+    const result = parseSqlStatements(content);
+    expect(result.transaction).toBe(true);
+    expect(result.statements).toHaveLength(1);
+  });
+
+  test("should handle NO TRANSACTION with multiple statements", () => {
+    const content = `-- +goose NO TRANSACTION
+CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
+CREATE INDEX CONCURRENTLY idx_users_name ON users(name);
+CREATE INDEX CONCURRENTLY idx_posts_user_id ON posts(user_id);`;
+    const result = parseSqlStatements(content);
+    expect(result.transaction).toBe(false);
+    expect(result.statements).toHaveLength(3);
+    expect(result.statements[0]).toContain("idx_users_email");
+    expect(result.statements[1]).toContain("idx_users_name");
+    expect(result.statements[2]).toContain("idx_posts_user_id");
+  });
+
+  test("should handle NO TRANSACTION with complex statements", () => {
+    const content = `-- +goose NO TRANSACTION
+-- +goose StatementBegin
+CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
+-- +goose StatementEnd`;
+    const result = parseSqlStatements(content);
+    expect(result.transaction).toBe(false);
+    expect(result.statements).toHaveLength(1);
+    expect(result.statements[0]).toContain("CREATE INDEX CONCURRENTLY");
+    expect(result.statements[0]).not.toContain("StatementBegin");
+  });
+
+  test("should strip NO TRANSACTION directive from parsed statements", () => {
+    const content = `-- +goose NO TRANSACTION
+CREATE TABLE users (id INT);`;
+    const result = parseSqlStatements(content);
+    expect(result.statements[0]).not.toContain("NO TRANSACTION");
+    expect(result.statements[0]).not.toContain("+goose");
+  });
+
+  test("should handle NO TRANSACTION in UP section of migration file", () => {
+    const content = `-- +goose Up
+-- +goose NO TRANSACTION
+CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
+
+-- +goose Down
+DROP INDEX IF EXISTS idx_users_email;`;
+    const upSection = extractUpSection(content);
+    const result = parseSqlStatements(upSection);
+    expect(result.transaction).toBe(false);
+    expect(result.statements).toHaveLength(1);
+  });
+
+  test("should handle NO TRANSACTION in DOWN section of migration file", () => {
+    const content = `-- +goose Up
+CREATE TABLE users (id INT);
+
+-- +goose Down
+-- +goose NO TRANSACTION
+DROP INDEX CONCURRENTLY IF EXISTS idx_users_email;`;
+    const downSection = extractDownSection(content);
+    const result = parseSqlStatements(downSection);
+    expect(result.transaction).toBe(false);
+    expect(result.statements).toHaveLength(1);
+  });
+
+  test("should handle regular transaction mode in UP section when not specified in DOWN", () => {
+    const content = `-- +goose Up
+CREATE TABLE users (id INT);
+
+-- +goose Down
+DROP TABLE IF EXISTS users;`;
+    const upSection = extractUpSection(content);
+    const downSection = extractDownSection(content);
+    const upResult = parseSqlStatements(upSection);
+    const downResult = parseSqlStatements(downSection);
+    expect(upResult.transaction).toBe(true);
+    expect(downResult.transaction).toBe(true);
+  });
+
+  test("should handle mixed NO TRANSACTION and regular statements", () => {
+    const content = `-- +goose NO TRANSACTION
+CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
+CREATE INDEX CONCURRENTLY idx_users_name ON users(name);
+
+-- This is a comment
+CREATE TABLE logs (id INT);`;
+    const result = parseSqlStatements(content);
+    // Should be parsed as no-transaction because directive is at start
+    expect(result.transaction).toBe(false);
+    expect(result.statements).toHaveLength(3);
+  });
+
+  test("should recognize NO TRANSACTION only at the beginning", () => {
+    const content = `CREATE TABLE users (id INT);
+-- +goose NO TRANSACTION
+CREATE INDEX idx_users_email ON users(email);`;
+    const result = parseSqlStatements(content);
+    // NO TRANSACTION is not at the beginning, so should default to transaction mode
+    expect(result.transaction).toBe(true);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain("CREATE TABLE");
+    expect(result.statements[1]).toContain("CREATE INDEX");
+  });
+
+  test("should handle NO TRANSACTION with empty lines before it", () => {
+    const content = `
+
+-- +goose NO TRANSACTION
+CREATE INDEX CONCURRENTLY idx_users_email ON users(email);`;
+    const result = parseSqlStatements(content);
+    expect(result.transaction).toBe(false);
+    expect(result.statements).toHaveLength(1);
+  });
+
+  test("should handle NO TRANSACTION with whitespace variations", () => {
+    const content = `  -- +goose NO TRANSACTION  
+CREATE INDEX CONCURRENTLY idx_users_email ON users(email);`;
+    const result = parseSqlStatements(content);
+    // trimmedContent.startsWith check should still work because of trim()
+    expect(result.transaction).toBe(false);
+  });
+
+  test("should properly parse real-world PostgreSQL CONCURRENTLY index with NO TRANSACTION", () => {
+    const content = `-- +goose NO TRANSACTION
+CREATE INDEX CONCURRENTLY idx_posts_published_at ON posts(published_at)
+WHERE status = 'published';
+
+CREATE INDEX CONCURRENTLY idx_posts_user_id ON posts(user_id)
+WHERE deleted_at IS NULL;`;
+    const result = parseSqlStatements(content);
+    expect(result.transaction).toBe(false);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain("WHERE status = 'published'");
+    expect(result.statements[1]).toContain("WHERE deleted_at IS NULL");
+  });
+});

@@ -1,6 +1,10 @@
 import type { SQL } from "bun";
-import { getMigrationDownStatements, getMigrationVersions } from "../create";
 import { APP_NAME } from "../init";
+import {
+  getMigrations,
+  getMigrationVersions,
+  runMigration,
+} from "../migration";
 import type { Store } from "../store";
 
 export async function downCommand(
@@ -34,35 +38,16 @@ export async function downCommand(
     process.exit(1);
   }
 
-  const down_statements = await getMigrationDownStatements(
+  const [migration] = await getMigrations(
     config.migration_dir,
-    [
-      {
-        version_id: last_unapplied_version.version_id,
-        file_name: last_unapplied_version.file_name,
-      },
-    ],
+    [last_unapplied_version],
+    "down",
   );
 
-  try {
-    await db.begin(async (tx) => {
-      for (const { version_id, file_name, statements } of down_statements) {
-        const startTime = performance.now();
-        if (statements.length === 0) {
-          console.log(`Empty migration ${file_name}, no updates to apply`);
-        } else {
-          for (const statement of statements) {
-            await store.runMigration(tx, statement);
-          }
-        }
-        await store.deleteVersion(tx, config.table_name, version_id);
-        const endTime = performance.now();
-        const duration = (endTime - startTime).toFixed(2);
-        console.log(`OK   ${file_name} (${duration}ms)`);
-      }
-    });
-  } catch (error) {
-    console.error(`${APP_NAME}: ERROR ${error}`);
+  if (!migration) {
+    console.error(`No migration to rollback.`);
     process.exit(1);
   }
+
+  await runMigration(db, store, config, migration);
 }

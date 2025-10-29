@@ -1,6 +1,10 @@
 import type { SQL } from "bun";
-import { getMigrationUpStatements, getMigrationVersions } from "../create";
 import { APP_NAME } from "../init";
+import {
+  getMigrations,
+  getMigrationVersions,
+  runMigration,
+} from "../migration";
 import type { Store } from "../store";
 
 export async function upByOneCommand(
@@ -31,36 +35,20 @@ export async function upByOneCommand(
     process.exit(0);
   }
 
-  const up_statements = await getMigrationUpStatements(config.migration_dir, [
-    first_unapplied_version,
-  ]);
+  const [up_migration] = await getMigrations(
+    config.migration_dir,
+    [first_unapplied_version],
+    "up",
+  );
 
-  try {
-    await db.begin(async (tx) => {
-      for (const { version_id, file_name, statements } of up_statements) {
-        const startTime = performance.now();
-        if (statements.length === 0) {
-          console.log(`Empty migration ${file_name}, recording as applied`);
-        } else {
-          for (const statement of statements) {
-            await store.runMigration(tx, statement);
-          }
-        }
-        await store.insertVersion(tx, config.table_name, version_id);
-        const endTime = performance.now();
-        const duration = (endTime - startTime).toFixed(2);
-        console.log(`OK   ${file_name} (${duration}ms)`);
-      }
-    });
-
-    const last_version = up_statements[up_statements.length - 1];
-    if (last_version) {
-      console.log(
-        `${APP_NAME}: successfully migrated database to version: ${last_version.version_id}`,
-      );
-    }
-  } catch (error) {
-    console.error(`${APP_NAME}: ERROR ${error}`);
+  if (!up_migration) {
+    console.error(`No migration to apply.`);
     process.exit(1);
   }
+
+  await runMigration(db, store, config, up_migration);
+
+  console.log(
+    `${APP_NAME}: successfully migrated database to version: ${up_migration.version_id}`,
+  );
 }
