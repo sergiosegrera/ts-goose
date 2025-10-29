@@ -220,8 +220,8 @@ export function parseSqlStatements(
   const transaction = !startsWithNoTxDirective(content);
   let envOn = false;
 
-  const hasUp = /(^|\n)--\s*\+goose\s+up\s*$/i.test(content);
-  const hasDown = /(^|\n)--\s*\+goose\s+down\s*$/i.test(content);
+  const hasUp = /(^|\n)--\s*\+goose\s+up\s*$/im.test(content);
+  const hasDown = /(^|\n)--\s*\+goose\s+down\s*$/im.test(content);
 
   let section = content;
   if (hasUp || hasDown) {

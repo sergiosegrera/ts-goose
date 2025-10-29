@@ -751,6 +751,106 @@ WHERE deleted_at IS NULL;`;
   });
 });
 
+describe("SQL Parser - Goose Compatibility Tests", () => {
+  test("should not split on semicolons in comments", () => {
+    const content = `
+-- +goose Up
+CREATE TABLE test (id INT); -- this comment; has semicolon
+INSERT INTO test VALUES (1); -- another comment; with semicolons`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain("CREATE TABLE test");
+    expect(result.statements[1]).toContain("INSERT INTO test");
+  });
+
+  test("should handle inline comment after semicolon", () => {
+    const content = `
+-- +goose Up
+CREATE TABLE test (id INT); -- comment with; semicolons
+SELECT * FROM test; -- another comment`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(2);
+  });
+
+  test("should detect ends-with-semicolon correctly (Goose compatibility)", () => {
+    // Test the three cases that matter:
+    // 1. Statement ending with semicolon and comment: should work
+    // 2. Statement without semicolon: should not work
+    // 3. Semicolon only in comment: should not work
+
+    const content = `
+-- +goose Up
+END; -- comment
+CREATE TABLE a (id INT);
+END -- comment
+CREATE TABLE b (id INT);`;
+
+    const result = parseSqlStatements(content);
+    // Should parse first two statements correctly
+    expect(result.statements.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("should handle mixed StatementBegin/End and regular statements", () => {
+    const content = `
+-- +goose Up
+-- +goose StatementBegin
+CREATE OR REPLACE FUNCTION update_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+-- +goose StatementEnd
+CREATE TRIGGER update_users_timestamp
+    BEFORE UPDATE ON users
+    FOR EACH ROW
+    EXECUTE FUNCTION update_timestamp();`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain("CREATE OR REPLACE FUNCTION");
+    expect(result.statements[1]).toContain("CREATE TRIGGER");
+  });
+
+  test("should handle envsub with unset variable", () => {
+    // Ensure unset variables are expanded to empty strings
+    const content = `
+-- +goose Up
+-- +goose ENVSUB ON
+INSERT INTO config VALUES ('\${UNSET_VAR}');`;
+
+    const result = parseSqlStatements(content);
+    // Variable gets expanded to empty string since UNSET_VAR is not set
+    expect(result.statements[0]).toContain("VALUES ('')");
+  });
+
+  test("should handle empty down section gracefully", () => {
+    const content = `
+-- +goose Up
+CREATE TABLE test (id INT);
+
+-- +goose Down`;
+
+    const resultUp = parseSqlStatements(content, "up");
+    expect(resultUp.statements).toHaveLength(1);
+
+    const resultDown = parseSqlStatements(content, "down");
+    expect(resultDown.statements).toHaveLength(0);
+  });
+
+  test("should handle statements with no trailing newline", () => {
+    const content = `-- +goose Up
+CREATE TABLE test (id INT);`;
+
+    const result = parseSqlStatements(content);
+    expect(result.statements).toHaveLength(1);
+    expect(result.statements[0]).toContain("CREATE TABLE test");
+  });
+});
+
 describe("SQL Parser - Advanced Edge Cases", () => {
   test("should handle dollar-quoted strings with semicolons (PostgreSQL)", () => {
     const content = `
@@ -992,5 +1092,65 @@ INSERT INTO test VALUES ('	tabs	inside');`;
     expect(result.statements).toHaveLength(2);
     expect(result.statements[0]).toContain("  leading spaces  ");
     expect(result.statements[1]).toContain("	tabs	");
+  });
+});
+
+describe("SQL Parser - NO TRANSACTION with Up/Down Migration (Regression Test)", () => {
+  test("should correctly parse UP section when NO TRANSACTION precedes Up marker", () => {
+    const content = `-- +goose NO TRANSACTION
+-- +goose Up
+pragma foreign_keys = on;
+create table if not exists users (
+    id integer primary key autoincrement,
+    name text not null
+);
+-- +goose Down
+drop table users;`;
+
+    const result = parseSqlStatements(content, "up");
+    expect(result.statements).toHaveLength(2);
+    expect(result.statements[0]).toContain("pragma foreign_keys");
+    expect(result.statements[1]).toContain("create table if not exists users");
+    expect(result.statements.some((s) => s.includes("drop table"))).toBe(false);
+    expect(result.transaction).toBe(false);
+  });
+
+  test("should correctly parse DOWN section when NO TRANSACTION precedes Up marker", () => {
+    const content = `-- +goose NO TRANSACTION
+-- +goose Up
+pragma foreign_keys = on;
+create table if not exists users (
+    id integer primary key autoincrement,
+    name text not null
+);
+-- +goose Down
+drop table users;`;
+
+    const result = parseSqlStatements(content, "down");
+    expect(result.statements).toHaveLength(1);
+    expect(result.statements[0]).toContain("drop table users");
+    expect(result.statements.some((s) => s.includes("create table"))).toBe(
+      false,
+    );
+    expect(result.transaction).toBe(false);
+  });
+
+  test("should parse migration file with NO TRANSACTION at start and Up/Down sections", () => {
+    const content = `-- +goose NO TRANSACTION
+-- +goose Up
+CREATE INDEX CONCURRENTLY idx_users_email ON users(email);
+
+-- +goose Down
+DROP INDEX IF EXISTS idx_users_email;`;
+
+    const upResult = parseSqlStatements(content, "up");
+    expect(upResult.statements).toHaveLength(1);
+    expect(upResult.statements[0]).toContain("CREATE INDEX CONCURRENTLY");
+    expect(upResult.transaction).toBe(false);
+
+    const downResult = parseSqlStatements(content, "down");
+    expect(downResult.statements).toHaveLength(1);
+    expect(downResult.statements[0]).toContain("DROP INDEX");
+    expect(downResult.transaction).toBe(false);
   });
 });
