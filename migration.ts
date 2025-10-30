@@ -92,7 +92,12 @@ export async function getMigrationVersions(
       throw new Error(`Invalid migration file: ${file_name}`);
     }
 
-    const version_id = BigInt(prefix);
+    let version_id: bigint;
+    try {
+      version_id = BigInt(prefix);
+    } catch {
+      throw new Error(`Invalid migration file: ${file_name} - "${prefix}" is not a valid version number`);
+    }
 
     const extension = file_name.split(".")[1];
 
@@ -171,6 +176,13 @@ export async function runMigration(
       await runTSMigration(db, migration, config);
     }
 
+    // Version tracking should only happen after successful migration
+    if (migration.direction === "up") {
+      await store.insertVersion(db, config.table_name, migration.version_id);
+    } else if (migration.direction === "down") {
+      await store.deleteVersion(db, config.table_name, migration.version_id);
+    }
+
     console.log(
       `OK\t${migration.file_name} (${(performance.now() - start_time).toFixed(2)}ms)`,
     );
@@ -182,12 +194,6 @@ export async function runMigration(
       version: migration.version_id,
       originalError: error instanceof Error ? error : undefined,
     });
-  }
-
-  if (migration.direction === "up") {
-    await store.insertVersion(db, config.table_name, migration.version_id);
-  } else if (migration.direction === "down") {
-    await store.deleteVersion(db, config.table_name, migration.version_id);
   }
 }
 
