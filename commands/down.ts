@@ -1,12 +1,11 @@
 import type { SQL } from "bun";
-import { APP_NAME } from "../init";
+import { handleError, handleNoMigrations } from "../error-handler";
 import {
   getMigrations,
   getMigrationVersions,
   runMigration,
 } from "../migration";
 import type { Store } from "../store";
-import { handleError, handleNoMigrations } from "../error-handler";
 
 export async function downCommand(
   db: SQL,
@@ -16,7 +15,10 @@ export async function downCommand(
   const table_exists = await store.checkTableExists(db, config.table_name);
 
   if (!table_exists) {
-    handleError(`Table ${config.table_name} does not exist.`, { command: "down", tableName: config.table_name });
+    handleError(`Table ${config.table_name} does not exist.`, {
+      command: "down",
+      tableName: config.table_name,
+    });
   }
 
   const migration_versions = await getMigrationVersions(config.migration_dir);
@@ -43,7 +45,11 @@ export async function downCommand(
   );
 
   if (!migration) {
-    handleNoMigrations({ command: "down", version: last_unapplied_version.version_id, fileName: last_unapplied_version.file_name });
+    handleNoMigrations({
+      command: "down",
+      version: last_unapplied_version.version_id,
+      fileName: last_unapplied_version.file_name,
+    });
   }
 
   await runMigration(db, store, config, migration);

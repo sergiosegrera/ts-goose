@@ -1,4 +1,5 @@
 import type { SQL } from "bun";
+import { exitSuccess, handleNoMigrations } from "../error-handler";
 import { APP_NAME } from "../init";
 import {
   getMigrations,
@@ -6,7 +7,6 @@ import {
   runMigration,
 } from "../migration";
 import type { Store } from "../store";
-import { exitSuccess, handleNoMigrations } from "../error-handler";
 
 export async function upCommand(
   db: SQL,
@@ -28,7 +28,9 @@ export async function upCommand(
   );
 
   if (unapplied_versions.length === 0) {
-    exitSuccess(`No migrations to apply, you can create one with \`${APP_NAME} create <name> [sql|ts]\``);
+    exitSuccess(
+      `No migrations to apply, you can create one with \`${APP_NAME} create <name> [sql|ts]\``,
+    );
   }
 
   const up_migrations = await getMigrations(

@@ -76,7 +76,7 @@ function startsWithNoTxDirective(s: string): boolean {
 
 function ensureTrailingSemicolon(statement: string): string {
   const t = statement.trim();
-  return t.endsWith(";") ? t : t + ";";
+  return t.endsWith(";") ? t : `${t};`;
 }
 
 function isCommentOnly(statement: string): boolean {
@@ -357,7 +357,7 @@ export function parseSqlStatements(
     haveBegunStatement = true;
 
     if (state === ParserState.IN_BLOCK) {
-      buf += line + "\n";
+      buf += `${line}\n`;
       return;
     }
 

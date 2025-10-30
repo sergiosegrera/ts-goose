@@ -1,4 +1,4 @@
-import type { SQL, TransactionSQL } from "bun";
+import type { SQL } from "bun";
 import type { Store } from "./store";
 
 const checkTableExists = async (db: SQL, tableName: string) => {
