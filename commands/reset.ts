@@ -1,4 +1,5 @@
 import type { SQL } from "bun";
+import { exitSuccess, handleError } from "../error-handler";
 import {
   getMigrations,
   getMigrationVersions,
@@ -14,16 +15,17 @@ export async function resetCommand(
   const table_exists = await store.checkTableExists(db, config.table_name);
 
   if (!table_exists) {
-    console.error(`Table ${config.table_name} does not exist.`);
-    process.exit(1);
+    handleError(`Table ${config.table_name} does not exist.`, {
+      command: "reset",
+      tableName: config.table_name,
+    });
   }
 
   const migration_versions = await getMigrationVersions(config.migration_dir);
   const versions = await store.getVersions(db, config.table_name);
 
   if (versions.length === 0) {
-    console.log(`No migrations to rollback.`);
-    process.exit(0);
+    exitSuccess(`No migrations to rollback.`);
   }
 
   // Roll back all migrations in reverse order

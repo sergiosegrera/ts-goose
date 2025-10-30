@@ -43,6 +43,9 @@ npm install -g @ssegrera/ts-goose
 - `ts-goose create <name> [sql|ts]` - Create a new migration file
 - `ts-goose up` - Apply all pending migrations
 - `ts-goose up-by-one` - Apply the next pending migration
+- `ts-goose up-to VERSION` - Apply all pending migrations up to a specific version
+- `ts-goose down-to VERSION` - Rollback all migrations up to a specific version
+- `ts-goose reset` - Rollback all migrations
 - `ts-goose down` - Rollback the last applied migration
 - `ts-goose status` - Show migration status
 

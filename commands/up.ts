@@ -6,6 +6,7 @@ import {
   runMigration,
 } from "../migration";
 import type { Store } from "../store";
+import { exitSuccess, handleNoMigrations } from "../error-handler";
 
 export async function upCommand(
   db: SQL,
@@ -27,10 +28,7 @@ export async function upCommand(
   );
 
   if (unapplied_versions.length === 0) {
-    console.error(
-      `No migrations to apply, you can create one with \`${APP_NAME} create <name> [sql|ts]\``,
-    );
-    process.exit(0);
+    exitSuccess(`No migrations to apply, you can create one with \`${APP_NAME} create <name> [sql|ts]\``);
   }
 
   const up_migrations = await getMigrations(
@@ -40,8 +38,7 @@ export async function upCommand(
   );
 
   if (!up_migrations) {
-    console.error(`No migrations to apply.`);
-    process.exit(1);
+    handleNoMigrations({ command: "up" });
   }
 
   for (const migration of up_migrations) {

@@ -1,4 +1,5 @@
 import type { SQL } from "bun";
+import { exitSuccess, handleError } from "../error-handler";
 import { APP_NAME } from "../init";
 import {
   getMigrations,
@@ -23,32 +24,31 @@ export async function downToCommand(
   const table_exists = await store.checkTableExists(db, config.table_name);
 
   if (!table_exists) {
-    console.error(`Table ${config.table_name} does not exist.`);
-    process.exit(1);
+    handleError(`Table ${config.table_name} does not exist.`, {
+      command: "down-to",
+      tableName: config.table_name,
+    });
   }
 
   const migration_versions = await getMigrationVersions(config.migration_dir);
   const versions = await store.getVersions(db, config.table_name);
 
   if (versions.length === 0) {
-    console.log(`No migrations to rollback.`);
-    process.exit(0);
+    exitSuccess(`No migrations to rollback.`);
   }
 
   // Get current version
   const current_version = versions[versions.length - 1]?.version_id ?? 0n;
 
   if (current_version === targetVersion) {
-    console.log(`Already at version ${targetVersion}.`);
-    process.exit(0);
+    exitSuccess(`Already at version ${targetVersion}.`);
   }
 
   if (current_version < targetVersion) {
-    console.error(
-      `Current version ${current_version} is lower than target version ${targetVersion}.`,
+    handleError(
+      `Current version ${current_version} is lower than target version ${targetVersion}. Use "up-to" command to migrate to a later version.`,
+      { command: "down-to", version: targetVersion },
     );
-    console.error('Use "up-to" command to migrate to a later version.');
-    process.exit(1);
   }
 
   // Check if target version exists in migrations
@@ -57,18 +57,20 @@ export async function downToCommand(
   );
 
   if (!target_migration) {
-    console.error(`Migration version ${targetVersion} not found.`);
-    process.exit(1);
+    handleError(`Migration version ${targetVersion} not found.`, {
+      command: "down-to",
+      version: targetVersion,
+    });
   }
 
   // Check if target version was ever applied
   const target_applied = versions.find((v) => v.version_id === targetVersion);
 
   if (!target_applied) {
-    console.error(
+    handleError(
       `Target version ${targetVersion} has not been applied. Cannot rollback to an unapplied version.`,
+      { command: "down-to", version: targetVersion },
     );
-    process.exit(1);
   }
 
   // Rollback all migrations after the target version in reverse order

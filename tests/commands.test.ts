@@ -10,6 +10,13 @@ import { upByOneCommand } from "../commands/up-by-one";
 import { upToCommand } from "../commands/up-to";
 import type { Store } from "../store";
 
+// Mock import utility for testing
+async function mockImport<T>(modulePath: string, factory: () => T): Promise<T> {
+  const mockModule = factory();
+  mock.module(modulePath, () => mockModule);
+  return mockModule;
+}
+
 // Test migration directory
 const TEST_MIGRATION_DIR = path.join(
   import.meta.dir,
@@ -342,7 +349,7 @@ describe("Commands - upCommand", () => {
     console.error = originalError;
     console.log = originalLog;
 
-    expect(exitCode).toBe(1);
+    expect(exitCode).toBe(4); // MIGRATION_ERROR
   });
 });
 
@@ -470,6 +477,180 @@ describe("Commands - upByOneCommand", () => {
   });
 });
 
+describe("Commands - createCommand", () => {
+  test("should create SQL migration with valid name", async () => {
+    const { createMigration } = await mockImport("../migration", () => ({
+      createMigration: mock(() => Promise.resolve()),
+    }));
+
+    const { createCommand } = await import("../commands/create");
+
+    await createCommand(["test_migration"]);
+
+    expect(createMigration).toHaveBeenCalledWith(
+      "test_migration",
+      expect.any(String),
+      "sql",
+    );
+  });
+
+  test("should create TypeScript migration when type is ts", async () => {
+    const { createMigration } = await mockImport("../migration", () => ({
+      createMigration: mock(() => Promise.resolve()),
+    }));
+
+    const { createCommand } = await import("../commands/create");
+
+    await createCommand(["test_migration", "ts"]);
+
+    expect(createMigration).toHaveBeenCalledWith(
+      "test_migration",
+      expect.any(String),
+      "ts",
+    );
+  });
+
+  test("should default to SQL when type is invalid", async () => {
+    const { createMigration } = await mockImport("../migration", () => ({
+      createMigration: mock(() => Promise.resolve()),
+    }));
+
+    const { createCommand } = await import("../commands/create");
+
+    await createCommand(["test_migration", "invalid"]);
+
+    expect(createMigration).toHaveBeenCalledWith(
+      "test_migration",
+      expect.any(String),
+      "sql",
+    );
+  });
+
+  test("should exit with error when name is missing", async () => {
+    const originalExit = process.exit;
+    const originalError = console.error;
+    let exitCode: number | undefined;
+    let loggedMessage: string | undefined;
+
+    process.exit = mock((code?: number) => {
+      exitCode = code;
+      throw new Error("EXIT");
+    }) as never;
+
+    console.error = mock((message: string) => {
+      loggedMessage = message;
+    }) as never;
+
+    const { createCommand } = await import("../commands/create");
+
+    try {
+      await createCommand([]);
+    } catch {
+      // Expected exit
+    }
+
+    expect(exitCode).toBe(2); // INVALID_ARGUMENT
+    expect(loggedMessage).toBe(
+      'Error: Command "create": Migration name is required and cannot be empty',
+    );
+
+    process.exit = originalExit;
+    console.error = originalError;
+  });
+
+  test("should exit with error when name is empty", async () => {
+    const originalExit = process.exit;
+    const originalError = console.error;
+    let exitCode: number | undefined;
+    let loggedMessage: string | undefined;
+
+    process.exit = mock((code?: number) => {
+      exitCode = code;
+      throw new Error("EXIT");
+    }) as never;
+
+    console.error = mock((message: string) => {
+      loggedMessage = message;
+    }) as never;
+
+    const { createCommand } = await import("../commands/create");
+
+    try {
+      await createCommand([""]);
+    } catch {
+      // Expected exit
+    }
+
+    expect(exitCode).toBe(2); // INVALID_ARGUMENT
+    expect(loggedMessage).toBe(
+      'Error: Command "create": Migration name is required and cannot be empty',
+    );
+
+    process.exit = originalExit;
+    console.error = originalError;
+  });
+
+  test("should exit with error when name contains invalid characters", async () => {
+    const originalExit = process.exit;
+    const originalError = console.error;
+    let exitCode: number | undefined;
+    let loggedMessage: string | undefined;
+
+    process.exit = mock((code?: number) => {
+      exitCode = code;
+      throw new Error("EXIT");
+    }) as never;
+
+    console.error = mock((message: string) => {
+      loggedMessage = message;
+    }) as never;
+
+    const { createCommand } = await import("../commands/create");
+
+    try {
+      await createCommand(["test@invalid"]);
+    } catch {
+      // Expected exit
+    }
+
+    expect(exitCode).toBe(2); // INVALID_ARGUMENT
+    expect(loggedMessage).toBe(
+      'Error: Command "create": Migration name "test@invalid" contains invalid characters. Only letters, numbers, hyphens, and underscores are allowed',
+    );
+
+    process.exit = originalExit;
+    console.error = originalError;
+  });
+
+  test("should accept valid names with letters, numbers, hyphens, and underscores", async () => {
+    const { createMigration } = await mockImport("../migration", () => ({
+      createMigration: mock(() => Promise.resolve()),
+    }));
+
+    const { createCommand } = await import("../commands/create");
+
+    // Test various valid combinations
+    const validNames = [
+      "test",
+      "test123",
+      "test-name",
+      "test_name",
+      "test_123-name",
+      "MyMigration",
+      "migration_v2",
+    ];
+
+    for (const name of validNames) {
+      await createCommand([name]);
+      expect(createMigration).toHaveBeenCalledWith(
+        name,
+        expect.any(String),
+        "sql",
+      );
+    }
+  });
+});
+
 describe("Commands - downCommand", () => {
   test("should exit if table doesn't exist", async () => {
     const { store, setTableExists } = createMockStore();
@@ -528,7 +709,7 @@ describe("Commands - downCommand", () => {
     process.exit = originalExit;
     console.error = originalError;
 
-    expect(exitCode).toBe(1);
+    expect(exitCode).toBe(3); // NO_MIGRATIONS
   });
 
   test("should rollback last applied migration", async () => {
@@ -621,7 +802,7 @@ describe("Commands - downCommand", () => {
     process.exit = originalExit;
     console.error = originalError;
 
-    expect(exitCode).toBe(1);
+    expect(exitCode).toBe(3); // NO_MIGRATIONS
   });
 
   test("should handle empty down section", async () => {

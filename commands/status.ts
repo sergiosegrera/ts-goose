@@ -2,6 +2,7 @@ import type { SQL } from "bun";
 import { APP_NAME } from "../init";
 import { getMigrationVersions } from "../migration";
 import type { Store } from "../store";
+import { exitSuccess } from "../error-handler";
 
 function formatDate(date: Date): string {
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -39,10 +40,7 @@ export async function statusCommand(
   const migration_versions = await getMigrationVersions(config.migration_dir);
 
   if (migration_versions.length === 0) {
-    console.log(
-      `No migrations found, you can create one with \`${APP_NAME} create <name> [sql|ts]\``,
-    );
-    process.exit(0);
+    exitSuccess(`No migrations found, you can create one with \`${APP_NAME} create <name> [sql|ts]\``);
   }
 
   // Check if the table exists

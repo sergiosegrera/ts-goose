@@ -1,6 +1,7 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { SQL } from "bun";
+import { handleMigrationError } from "./error-handler";
 import { DOWN_COMMENT, parseSQLFile, UP_COMMENT } from "./sql-parser";
 import type { Store } from "./store";
 
@@ -174,10 +175,13 @@ export async function runMigration(
       `OK\t${migration.file_name} (${(performance.now() - start_time).toFixed(2)}ms)`,
     );
   } catch (error) {
-    console.error(
-      `Error running ${migration.direction} migration ${migration.file_name}: ${error instanceof Error ? error.message : "Unknown error"}`,
-    );
-    process.exit(1);
+    const errorMessage = `Error running ${migration.direction} migration ${migration.file_name}: ${error instanceof Error ? error.message : "Unknown error"}`;
+    handleMigrationError(errorMessage, {
+      command: migration.direction,
+      fileName: migration.file_name,
+      version: migration.version_id,
+      originalError: error instanceof Error ? error : undefined,
+    });
   }
 
   if (migration.direction === "up") {

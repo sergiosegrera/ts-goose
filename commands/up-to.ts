@@ -1,4 +1,5 @@
 import type { SQL } from "bun";
+import { exitSuccess, handleError, handleNoMigrations } from "../error-handler";
 import { APP_NAME } from "../init";
 import {
   getMigrations,
@@ -29,24 +30,24 @@ export async function upToCommand(
   );
 
   if (!target_migration) {
-    console.error(`Migration version ${targetVersion} not found.`);
-    process.exit(1);
+    handleError(`Migration version ${targetVersion} not found.`, {
+      command: "up-to",
+      version: targetVersion,
+    });
   }
 
   // Get current version
   const current_version = versions[versions.length - 1]?.version_id ?? 0n;
 
   if (current_version === targetVersion) {
-    console.log(`Already at version ${targetVersion}.`);
-    process.exit(0);
+    exitSuccess(`Already at version ${targetVersion}.`);
   }
 
   if (current_version > targetVersion) {
-    console.error(
-      `Current version ${current_version} is higher than target version ${targetVersion}.`,
+    handleError(
+      `Current version ${current_version} is higher than target version ${targetVersion}. Use "down-to" command to rollback to an earlier version.`,
+      { command: "up-to", version: targetVersion },
     );
-    console.error('Use "down-to" command to rollback to an earlier version.');
-    process.exit(1);
   }
 
   // Get all unapplied migrations up to and including the target
@@ -57,8 +58,7 @@ export async function upToCommand(
   );
 
   if (unapplied_versions.length === 0) {
-    console.log(`No migrations to apply up to version ${targetVersion}.`);
-    process.exit(0);
+    exitSuccess(`No migrations to apply up to version ${targetVersion}.`);
   }
 
   const up_migrations = await getMigrations(
@@ -68,8 +68,7 @@ export async function upToCommand(
   );
 
   if (!up_migrations || up_migrations.length === 0) {
-    console.error(`No migrations to apply.`);
-    process.exit(1);
+    handleNoMigrations({ command: "up-to", version: targetVersion });
   }
 
   for (const migration of up_migrations) {

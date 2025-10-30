@@ -6,6 +6,7 @@ import {
   runMigration,
 } from "../migration";
 import type { Store } from "../store";
+import { handleError, handleNoMigrations } from "../error-handler";
 
 export async function downCommand(
   db: SQL,
@@ -15,8 +16,7 @@ export async function downCommand(
   const table_exists = await store.checkTableExists(db, config.table_name);
 
   if (!table_exists) {
-    console.error(`Table ${config.table_name} does not exist.`);
-    process.exit(1);
+    handleError(`Table ${config.table_name} does not exist.`, { command: "down", tableName: config.table_name });
   }
 
   const migration_versions = await getMigrationVersions(config.migration_dir);
@@ -25,8 +25,7 @@ export async function downCommand(
   const last_version = versions[versions.length - 1];
 
   if (!last_version) {
-    console.error(`No migrations to rollback.`);
-    process.exit(1);
+    handleNoMigrations({ command: "down" });
   }
 
   const last_unapplied_version = migration_versions.find(
@@ -34,8 +33,7 @@ export async function downCommand(
   );
 
   if (!last_unapplied_version) {
-    console.error(`No local version to rollback.`);
-    process.exit(1);
+    handleNoMigrations({ command: "down", version: last_version.version_id });
   }
 
   const [migration] = await getMigrations(
@@ -45,8 +43,7 @@ export async function downCommand(
   );
 
   if (!migration) {
-    console.error(`No migration to rollback.`);
-    process.exit(1);
+    handleNoMigrations({ command: "down", version: last_unapplied_version.version_id, fileName: last_unapplied_version.file_name });
   }
 
   await runMigration(db, store, config, migration);
